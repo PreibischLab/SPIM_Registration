@@ -8,6 +8,7 @@ import ij.ImagePlus;
 import ij.ImageStack;
 import ij.WindowManager;
 import ij.gui.EllipseRoi;
+import ij.gui.GenericDialog;
 import ij.gui.OvalRoi;
 import ij.gui.Overlay;
 import ij.gui.Roi;
@@ -69,11 +70,11 @@ import net.imglib2.view.Views;
 import spim.process.fusion.FusionHelper;
 
 /**
- * An interactive tool for determining the required sigma and peak threshold
+ * An interactive tool for getting Intensity in ROI's using Active Contour
  * 
- * @author Stephan Preibisch
+ * @author Varun Kapoor
  */
-public class InteractiveDoG implements PlugIn
+public class InteractiveActiveContour implements PlugIn
 {
 	final int extraSize = 40;
 	final int scrollbarSize = 1000;
@@ -110,6 +111,7 @@ public class InteractiveDoG implements PlugIn
 	Color originalColor = new Color( 0.8f, 0.8f, 0.8f );
 	Color inactiveColor = new Color( 0.95f, 0.95f, 0.95f );
 	public Rectangle standardRectangle;
+	public EllipseRoi standardEllipse;
 	boolean isComputing = false;
 	boolean isStarted = false;
 	boolean enableSigma2 = false;
@@ -150,14 +152,15 @@ public class InteractiveDoG implements PlugIn
 	// for the case that it is needed again, we can save one conversion
 	public FloatImagePlus< net.imglib2.type.numeric.real.FloatType > getConvertedImage() { return source; }
 	
-	public InteractiveDoG( final ImagePlus imp, final int channel ) 
+	public InteractiveActiveContour( final ImagePlus imp, final int channel ) 
 	{ 
 		this.imp = imp;
 		this.channel = channel;
 	}
-	public InteractiveDoG( final ImagePlus imp ) { this.imp = imp; }
-	public InteractiveDoG() {}
-
+	public InteractiveActiveContour( final ImagePlus imp ) { this.imp = imp; }
+	public InteractiveActiveContour() {}
+	
+	
 	public void setMinIntensityImage( final double min ) { this.minIntensityImage = min; }
 	public void setMaxIntensityImage( final double max ) { this.maxIntensityImage = max; }
 
@@ -167,7 +170,10 @@ public class InteractiveDoG implements PlugIn
 		if ( imp == null )
 			imp = WindowManager.getCurrentImage();
 		
+		
 		standardRectangle = new Rectangle( imp.getWidth()/4, imp.getHeight()/4, imp.getWidth()/2, imp.getHeight()/2 );
+		
+		
 		
 		if ( imp.getType() == ImagePlus.COLOR_RGB || imp.getType() == ImagePlus.COLOR_256 )
 		{			
@@ -202,6 +208,12 @@ public class InteractiveDoG implements PlugIn
 		// compute first version
 		updatePreview( ValueChange.ALL );		
 		isStarted = true;
+		
+		// Modify Roi by running snakes
+		
+		
+		
+		
 		
 		// check whenever roi is modified to update accordingly
 		roiListener = new RoiListener();
@@ -294,6 +306,8 @@ public class InteractiveDoG implements PlugIn
 		}
 		
 		o.clear();
+
+	
 		
 		for ( final DifferenceOfGaussianPeak<FloatType> peak : peaks )
 		{
@@ -314,9 +328,16 @@ public class InteractiveDoG implements PlugIn
 						or.setStrokeColor( Color.red );
 					
 					o.add( or );
+					
+					
 				}
+				
+					
+				
 			}
 		}
+		
+
 		
 		imp.updateAndDraw();
 		
@@ -487,7 +508,7 @@ public class InteractiveDoG implements PlugIn
 	protected void displaySliders()
 	{
 		final Frame frame = new Frame("Adjust Difference-of-Gaussian Values");
-		frame.setSize( 400, 330 );
+		frame.setSize( 400, 400 );
 
 		/* Instantiation */
 		final GridBagLayout layout = new GridBagLayout();
@@ -512,6 +533,7 @@ public class InteractiveDoG implements PlugIn
 	    final Button apply = new Button( "Apply to Stack (will take some time)" );
 	    final Button button = new Button( "Done" );
 	    final Button cancel = new Button( "Cancel" );
+	    final Button snakes = new Button( "Applying snakes to Roi" );
 	    
 	    final Checkbox sigma2Enable = new Checkbox( "Enable Manual Adjustment of Sigma 2 ", enableSigma2 );
 	    final Checkbox min = new Checkbox( "Look for Minima (red)", lookForMinima );
@@ -558,7 +580,12 @@ public class InteractiveDoG implements PlugIn
 	    ++c.gridy;
 	    c.insets = new Insets(0,75,0,75);
 	    frame.add( apply, c );
-
+	    
+	    ++c.gridy;
+	    c.insets = new Insets(10,75,10,75);
+	    frame.add( snakes, c );
+	    
+	    
 	    ++c.gridy;
 	    c.insets = new Insets(10,150,0,150);
 	    frame.add( button, c );
@@ -574,6 +601,7 @@ public class InteractiveDoG implements PlugIn
 	    button.addActionListener( new FinishedButtonListener( frame, false ) );
 	    cancel.addActionListener( new FinishedButtonListener( frame, true ) );
 		apply.addActionListener( new ApplyButtonListener() );
+		snakes.addActionListener(new snakeButtonListener());
 		min.addItemListener( new MinListener() );
 		max.addItemListener( new MaxListener() );
 		sigma2Enable.addItemListener( new EnableListener( sigma2, sigmaText2 ) );
@@ -720,6 +748,7 @@ public class InteractiveDoG implements PlugIn
 			// convert ImgLib2 image to ImgLib1 image via the imageplus
 			final Image< FloatType > source = ImageJFunctions.wrapFloat( imp );
 
+			
 			IOFunctions.println( "Computing DoG ... " );
 
 			// test the parameters on the complete stack
@@ -763,6 +792,51 @@ public class InteractiveDoG implements PlugIn
 		}
 	}
 
+	
+	protected class snakeButtonListener implements ActionListener
+	{
+		@Override
+		public void actionPerformed( final ActionEvent arg0 ) 
+		{
+			ImagePlus newimp = imp;
+            
+			Roi roi = imp.getRoi();
+			final Rectangle rect = roi.getBounds();
+			InteractiveSnake snake = new InteractiveSnake(imp);
+			for ( final DifferenceOfGaussianPeak<FloatType> peak : peaks )
+			{
+				if ( ( peak.isMax() && lookForMaxima ) || ( peak.isMin() && lookForMinima ) )
+				{
+					final float x = peak.getPosition( 0 ); 
+					final float y = peak.getPosition( 1 );
+					
+					if ( Math.abs( peak.getValue().get() ) > threshold &&
+						 x >= extraSize/2 && y >= extraSize/2 &&
+						 x < rect.width+extraSize/2 && y < rect.height+extraSize/2 )
+					{
+						final OvalRoi or = new OvalRoi( Util.round( x - sigma ) + rect.x - extraSize/2, Util.round( y - sigma ) + rect.y - extraSize/2, Util.round( sigma+sigma2 ), Util.round( sigma+sigma2 ) );
+						
+						if ( peak.isMax() )
+							or.setStrokeColor( Color.green );
+						else if ( peak.isMin() )
+							or.setStrokeColor( Color.red );
+						
+						newimp.setRoi(or);
+						
+					}
+					
+						
+					
+				}
+			}
+			ImageProcessor ip = newimp.getProcessor();
+			snake.run(ip);
+		}
+	}
+
+	
+	
+	
 	protected class FinishedButtonListener implements ActionListener
 	{
 		final Frame parent;
@@ -987,13 +1061,19 @@ public class InteractiveDoG implements PlugIn
 		new ImageJ();
 		
 		ImagePlus imp = new Opener().openImage( "/Users/varunkapoor/res/test_blobs.tif" );
-		//ImagePlus imp = new Opener().openImage( "D:/Documents and Settings/Stephan/My Documents/Downloads/1-315--0.08-isotropic-subvolume/1-315--0.08-isotropic-subvolume.tif" );
 		imp.show();
+		final ImagePlus currentimp = IJ.getImage();
+				IJ.run("8-bit");
+		//ImagePlus imp = new Opener().openImage( "D:/Documents and Settings/Stephan/My Documents/Downloads/1-315--0.08-isotropic-subvolume/1-315--0.08-isotropic-subvolume.tif" );
 		
-		imp.setSlice( 27 );		
-		imp.setRoi( imp.getWidth()/4, imp.getHeight()/4, imp.getWidth()/2, imp.getHeight()/2 );		
 		
-		new InteractiveDoG().run( null ); 	
+		currentimp.setSlice( 27 );		
+		currentimp.setRoi( imp.getWidth()/4, imp.getHeight()/4, imp.getWidth()/2, imp.getHeight()/2 );		
+		
+		new InteractiveActiveContour().run( null ); 
+		//ImageProcessor ip = imp.getChannelProcessor();
+		//new InteractiveSnake().run(ip);
 			
 	}
 }
+
