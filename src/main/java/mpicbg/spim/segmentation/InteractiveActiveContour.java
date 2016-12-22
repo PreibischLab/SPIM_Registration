@@ -14,6 +14,7 @@ import ij.gui.Overlay;
 import ij.gui.Roi;
 import ij.io.Opener;
 import ij.plugin.PlugIn;
+import ij.plugin.frame.RoiManager;
 import ij.process.ByteProcessor;
 import ij.process.FloatProcessor;
 import ij.process.ImageProcessor;
@@ -65,6 +66,7 @@ import mpicbg.spim.registration.detection.DetectionSegmentation;
 import net.imglib2.RandomAccess;
 import net.imglib2.exception.ImgLibException;
 import net.imglib2.img.ImagePlusAdapter;
+import net.imglib2.img.Img;
 import net.imglib2.img.imageplus.FloatImagePlus;
 import net.imglib2.view.Views;
 import spim.process.fusion.FusionHelper;
@@ -307,8 +309,31 @@ public class InteractiveActiveContour implements PlugIn
 		
 		o.clear();
 
-	
+		 RoiManager roimanager = RoiManager.getInstance();
+		 
+			 
 		
+		
+		 if (roimanager == null){
+			roimanager = new RoiManager();
+		 }
+		
+		 Roi[] RoisOrig = roimanager.getRoisAsArray();
+			
+			if (change == ValueChange.ROI && RoisOrig!=null){
+				
+				for (int index = 0; index < RoisOrig.length; ++index){
+			     roimanager.deselect(RoisOrig[index]);
+				}
+				roimanager.close();
+				roimanager = new RoiManager();
+				
+				}
+		 
+		 
+		 
+		 roimanager.setVisible(true);
+		 
 		for ( final DifferenceOfGaussianPeak<FloatType> peak : peaks )
 		{
 			if ( ( peak.isMax() && lookForMaxima ) || ( peak.isMin() && lookForMinima ) )
@@ -328,7 +353,7 @@ public class InteractiveActiveContour implements PlugIn
 						or.setStrokeColor( Color.red );
 					
 					o.add( or );
-					
+					roimanager.addRoi(or);
 					
 				}
 				
@@ -337,7 +362,7 @@ public class InteractiveActiveContour implements PlugIn
 			}
 		}
 		
-
+		
 		
 		imp.updateAndDraw();
 		
@@ -799,10 +824,13 @@ public class InteractiveActiveContour implements PlugIn
 		public void actionPerformed( final ActionEvent arg0 ) 
 		{
 			ImagePlus newimp = imp;
-            
 			Roi roi = imp.getRoi();
 			final Rectangle rect = roi.getBounds();
 			InteractiveSnake snake = new InteractiveSnake(imp);
+			
+			
+		    
+		    
 			for ( final DifferenceOfGaussianPeak<FloatType> peak : peaks )
 			{
 				if ( ( peak.isMax() && lookForMaxima ) || ( peak.isMin() && lookForMinima ) )
@@ -823,14 +851,19 @@ public class InteractiveActiveContour implements PlugIn
 						
 						newimp.setRoi(or);
 						
-					}
-					
 						
+					   
+					  
+					   
+					}
 					
 				}
 			}
+			
+			
 			ImageProcessor ip = newimp.getProcessor();
-			snake.run(ip);
+				snake.run(ip);
+			
 		}
 	}
 
@@ -1062,17 +1095,16 @@ public class InteractiveActiveContour implements PlugIn
 		
 		ImagePlus imp = new Opener().openImage( "/Users/varunkapoor/res/test_blobs.tif" );
 		imp.show();
+		
+		IJ.run("16-bit");
 		final ImagePlus currentimp = IJ.getImage();
-				IJ.run("8-bit");
-		//ImagePlus imp = new Opener().openImage( "D:/Documents and Settings/Stephan/My Documents/Downloads/1-315--0.08-isotropic-subvolume/1-315--0.08-isotropic-subvolume.tif" );
 		
+			
+		currentimp.setRoi( currentimp.getWidth()/4, currentimp.getHeight()/4, 
+				currentimp.getWidth()/2, currentimp.getHeight()/2 );		
 		
-		currentimp.setSlice( 27 );		
-		currentimp.setRoi( imp.getWidth()/4, imp.getHeight()/4, imp.getWidth()/2, imp.getHeight()/2 );		
+		new InteractiveActiveContour(currentimp).run( null ); 
 		
-		new InteractiveActiveContour().run( null ); 
-		//ImageProcessor ip = imp.getChannelProcessor();
-		//new InteractiveSnake().run(ip);
 			
 	}
 }
