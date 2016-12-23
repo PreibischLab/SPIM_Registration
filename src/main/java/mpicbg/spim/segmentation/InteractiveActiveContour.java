@@ -1093,7 +1093,7 @@ public class InteractiveActiveContour implements PlugIn
 	{
 		new ImageJ();
 		
-		ImagePlus imp = new Opener().openImage( "/Users/varunkapoor/res/test_blobs.tif" );
+		ImagePlus imp = new Opener().openImage( "/Users/varunkapoor/res/bio-test.tif" );
 		imp.show();
 		
 		IJ.run("16-bit");

@@ -22,8 +22,11 @@ package mpicbg.spim.segmentation;
   import ij.plugin.filter.PlugInFilter;
   import ij.plugin.frame.*;
   import ij.process.*;
+import net.imglib2.RandomAccessibleInterval;
+import net.imglib2.img.ImagePlusAdapter;
+import net.imglib2.type.numeric.real.FloatType;
 
-  import java.awt.*;
+import java.awt.*;
   import java.io.IOException;
   import java.util.concurrent.atomic.AtomicInteger;
   import java.util.logging.Level;
@@ -94,6 +97,7 @@ package mpicbg.spim.segmentation;
       boolean propagate = true;
       boolean movie = false;
       boolean saveiterrois = false;
+      boolean saveIntensity = false;
       boolean useroinames = false;
       boolean nosizelessrois = false;
       //boolean differentfolder=false;
@@ -117,7 +121,7 @@ package mpicbg.spim.segmentation;
           slice2 = profondeur;
           Calibration cal = imp.getCalibration();
           double resXY = cal.pixelWidth;
-
+            double Inten =   cal.pixelDepth;
           boolean dialog = Dialogue();
 
           // many rois
@@ -156,6 +160,7 @@ package mpicbg.spim.segmentation;
               if (createsegimage) {
                   pile_seg = new ImageStack(largeur, hauteur);
               }
+             
               // update of the display
               String label = "" + imp.getTitle();
               for (int z = 0; z < profondeur; z++) {
@@ -223,108 +228,22 @@ package mpicbg.spim.segmentation;
                               }
                           }
                       } // save coord
+                      
+                      
+                      ColorProcessor imagep = (ColorProcessor) (pile_resultat.getProcessor(z).duplicate());
+                      double IntensityRoi = getIntensity(imagep, RoisResult[i]);
+                      
+                      if (saveIntensity){
+                      	snake.writeIntensities(usefolder + "//" + "RoiIntensity" + (i + 1) + "-z", z, resXY, Inten,  IntensityRoi);
+                      	
+                      	
+                      }
+                      
+                      
                   }
               }
 
-//              for (int z = slice1; z != (slice2 + sens); z += sens) {
-//                  final int zz = z;
-//                  k.set(0);
-  //
-//                  for (int i = 0; i < RoisOrig.length; i++) {
-//                      image[i] = (ColorProcessor) (pile_resultat.getProcessor(zz).duplicate());
-//                      pluses[i] = new ImagePlus("Roi " + i, image[i]);
-//                      //pluses[i].show();
-//                  }
-  //
-//                  // for all rois
-//                  for (int t = 0; t < threads.length; t++) {
-//                      threads[t] = new Thread() {
-  //
-//                          @Override
-//                          public void run() {
-//                              IJ.wait(1000);
-//                              Roi roi = null;
-//                              //for (int i = 0; i < RoisOrig.length; i++) {
-  //
-//                              for (int i = k.getAndIncrement(); i < RoisOrig.length; i = k.getAndIncrement()) {
-  //
-//                                  if (propagate) {
-//                                      // imp.setRoi(RoisCurrent[i]);
-//                                      roi = RoisCurrent[i];
-//                                  } else {
-//                                      // imp.setRoi(RoisOrig[i]);
-//                                      roi = RoisOrig[i];
-//                                  }
-//                                  IJ.log("processing slice " + zz + " with roi " + i);
-  //
-//                                  snakes[i] = processSnake(pluses[i], roi, zz, i + 1);
-//                                  snakes[i].killImages();
-//                                  // RoisCurrent[i] = imp.getRoi();
-//                                  // imp_resultat.updateAndRepaintWindow();
-//                              } // for roi
-//                          }
-//                      };
-//                  }// for threads
-  //
-//                  // launch threads
-//                  for (int ithread = 0; ithread < threads.length; ++ithread) {
-//                      threads[ithread].setPriority(Thread.NORM_PRIORITY);
-//                      threads[ithread].start();
-//                  }
-  //
-//                  try {
-//                      for (int ithread = 0; ithread < threads.length; ++ithread) {
-//                          threads[ithread].join();
-//                      }
-//                  } catch (InterruptedException ie) {
-//                      throw new RuntimeException(ie);
-//                  }
-//                  // threads finished
-  //
-//                  // display + rois
-//                  //RoiEncoder saveRoi;
-//                  ColorProcessor imageDraw = (ColorProcessor) (pile_resultat.getProcessor(zz).duplicate());
-//                  for (int i = 0; i < RoisOrig.length; i++) {
-//                      snakes[i].DrawSnake(imageDraw, colorDraw, 1);
-//                      pluses[i].hide();
-//                      RoisResult[i] = snakes[i].createRoi();
-//                      RoisResult[i].setName("res-" + i);
-//                      RoisCurrent[i] = snakes[i].createRoi();
-//                      // add results roi to manager
-//                      //roimanager.addRoi(RoisResult[i]);
-  //
-//                  }
-//                  pile_resultat.setPixels(imageDraw.getPixels(), z);
-  //
-//                  if (createsegimage) {
-//                      ByteProcessor seg = new ByteProcessor(pile_seg.getWidth(), pile_seg.getHeight());
-//                      ByteProcessor tmp;
-//                      for (int i = 0; i < RoisOrig.length; i++) {
-//                          tmp = snakes[i].segmentation(seg.getWidth(), seg.getHeight(), i + 1);
-//                          seg.copyBits(tmp, 0, 0, Blitter.ADD);
-//                      }
-//                      seg.resetMinAndMax();
-//                      pile_seg.addSlice("Seg " + z, seg);
-//                      //new ImagePlus("seg " + zz, seg).show();
-//                      //IJ.run("3-3-2 RGB");
-//                      // IJ.run("Enhance Contrast", "saturated=0.0");
-//                  } // segmentation
-  //
-//                  if (savecoords) {
-//                      for (int i = 0; i < RoisOrig.length; i++) {
-//                          try {
-//                              snakes[i].writeCoordinates(usefolder + "//" + "ABSnake-r" + (i + 1) + "-z", zz, resXY);
-//                              if (nosizelessrois == false || (nosizelessrois == true && RoisResult[i].getFloatWidth() > 2 && RoisResult[i].getFloatHeight() > 2)) {
-//                                  saveRoi = new RoiEncoder(usefolder + "//" + "ABSnake-r" + (i + 1) + "-z" + zz + ".roi");
-//                                  saveRoi.write(RoisResult[i]);
-//                              }
-//                          } catch (IOException ex) {
-//                              Logger.getLogger(ABSnake_.class.getName()).log(Level.SEVERE, null, ex);
-//                          }
-//                      }
-//                  } // save coord
-  //
-//              } // for z
+
               new ImagePlus("Draw", pile_resultat).show();
               if (createsegimage) {
                   new ImagePlus("Seg", pile_seg).show();
@@ -359,6 +278,7 @@ package mpicbg.spim.segmentation;
           gd.addCheckbox("Save_coords:", savecoords);
           gd.addCheckbox("Create_seg_image:", createsegimage);
           gd.addCheckbox("Save_iteration_rois:", saveiterrois);
+          gd.addCheckbox("Save_RoiIntensities:", saveIntensity);
           //gd.addCheckbox("Use_roi_names:", useroinames);
           gd.addCheckbox("No_sizeless_rois:", nosizelessrois);
           //gd.addCheckbox("Use_different_folder", differentfolder);
@@ -419,6 +339,7 @@ package mpicbg.spim.segmentation;
           savecoords = gd.getNextBoolean();
           createsegimage = gd.getNextBoolean();
           saveiterrois = gd.getNextBoolean();
+          saveIntensity = gd.getNextBoolean();
           //useroinames=gd.getNextBoolean();
           nosizelessrois = gd.getNextBoolean();
           //differentfolder=gd.getNextBoolean();
@@ -549,7 +470,13 @@ package mpicbg.spim.segmentation;
 
                   }
               }
-          }// end iteration
+          }
+          
+          
+       
+        
+        
+          // end iteration
 
           // close temp window    
           //plus.hide();
@@ -583,6 +510,31 @@ package mpicbg.spim.segmentation;
           return snake;
       }
 
+      
+      public double getIntensity(ImageProcessor ip, Roi roi){
+    	  
+    	  double Intensity = 0;
+    	  
+    	 
+			ImageProcessor mask = roi.getMask();
+			Rectangle r = roi.getBounds();
+			
+			
+			
+			for (int y=0; y<r.height; y++) {
+				for (int x=0; x<r.width; x++) {
+					if (mask==null||mask.getPixel(x,y)!=0) {
+
+						Intensity += ip.getPixelValue(x+r.x, y+r.y);
+					
+					}
+				}
+			}
+    		
+    	  return Intensity;
+    	  
+      }
+      
       /**
        * setup
        *

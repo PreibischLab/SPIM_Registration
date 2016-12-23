@@ -204,8 +204,30 @@ public class ABSnake {
             BufferedWriter bw = new BufferedWriter(fw);
             bw.write("nb\tX\tY\tZ\tXcal\tYcal\n");
             for (int i = 0; i < NPT; i++) {
-                bw.write(i + "\t" + nf.format(points[i].x) + "\t" + nf.format(points[i].y) + "\t" + nb + "\t" + nf.format(points[i].x * resXY) + "\t" + nf.format(points[i].y) + "\n");
+                bw.write(i + "\t" + nf.format(points[i].x) + "\t" + nf.format(points[i].y) + "\t" + nb + "\t" + nf.format(points[i].x * resXY) + "\t" + nf.format(points[i].y * resXY) + "\n");
             }
+            bw.close();
+            fw.close();
+        } catch (IOException e) {
+        }
+    }
+    /**
+     * write output in a text format
+     *
+     * @param nom file name
+     * @param nb slice number
+     */
+    public void writeIntensities(String nom, int nb, double resXY, double Inten, double Intensity) {
+        NumberFormat nf = NumberFormat.getInstance(Locale.ENGLISH);
+        nf.setMaximumFractionDigits(3);
+        try {
+            File fichier = new File(nom + nb + ".txt");
+            FileWriter fw = new FileWriter(fichier);
+            BufferedWriter bw = new BufferedWriter(fw);
+            bw.write("\tX\tY\tZ\tXcal\tYcal\tIntensity\tIntensitycal\n");
+        
+                bw.write("\t" + nf.format(points[0].x) + "\t" + nf.format(points[0].y) + "\t" + nb + "\t" + nf.format(points[NPT - 1].x * resXY) + "\t" + nf.format(points[NPT - 1].y * resXY) +"\t" + nf.format(Intensity) + "\t"+ "\t" + nf.format(Intensity * Inten) + "\n");
+            
             bw.close();
             fw.close();
         } catch (IOException e) {
@@ -321,6 +343,7 @@ public class ABSnake {
             if (R.getType() == Roi.POLYGON) {
                 this.resample(true);
             }
+            
 
         } else {
             IJ.showStatus("Selection type not supported");
