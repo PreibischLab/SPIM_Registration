@@ -22,9 +22,7 @@ package mpicbg.spim.segmentation;
   import ij.plugin.filter.PlugInFilter;
   import ij.plugin.frame.*;
   import ij.process.*;
-import net.imglib2.RandomAccessibleInterval;
-import net.imglib2.img.ImagePlusAdapter;
-import net.imglib2.type.numeric.real.FloatType;
+import spim.fiji.plugin.Max_Project;
 
 import java.awt.*;
   import java.io.IOException;
@@ -47,17 +45,23 @@ import java.awt.*;
       ImageStack pile_resultat = null;
       ImageStack pile_seg = null;
       int currentSlice = -1;
-      // Sauvegarde des dimensions de la pile :
-      int profondeur = 0;
-      int largeur = 0;
-      int hauteur = 0;
-      // ROI originale et courante
+      // Dimensions of the stck :
+      int stacksize = 0;
+      int length = 0;
+      int height= 0;
+      // ROI original
       int nbRois;
       Roi rorig = null;
       Roi processRoi = null;
       Color colorDraw = null;
      
       int channel;
+      
+ public InteractiveSnake (){
+    	  
+    	  
+      }
+      
       public InteractiveSnake (ImagePlus imp){
     	  
     	  this.imp = imp;
@@ -71,17 +75,17 @@ import java.awt.*;
       
       
       /**
-       * Parametres du Snake :
+       * Parametres of Snake :
        */
       SnakeConfigDriver configDriver;
       // number of iterations
-      int ite = 101;
+      int ite = 200;
       // step to display snake
-      int step = 50;
+      int step = 100;
       // threshold of edges
       int seuil = 5;
       // how far to look for edges
-      int DistMAX = Prefs.getInt("ABSnake_DistSearch.int", 200);
+      int DistMAX = Prefs.getInt("ABSnake_DistSearch.int", 20);
       // maximum displacement
       double force = 5.0;
       // regularization factors, min and max
@@ -97,7 +101,7 @@ import java.awt.*;
       boolean propagate = true;
       boolean movie = false;
       boolean saveiterrois = false;
-      boolean saveIntensity = false;
+      boolean saveIntensity = true;
       boolean useroinames = false;
       boolean nosizelessrois = false;
       //boolean differentfolder=false;
@@ -112,13 +116,15 @@ import java.awt.*;
        */
       public void run(ImageProcessor ip) {
           // original stack
+    	  
+    	  
           pile = imp.getStack();
           // sizes of the stack
-          profondeur = pile.getSize();
-          largeur = pile.getWidth();
-          hauteur = pile.getHeight();
+          stacksize = pile.getSize();
+          length = pile.getWidth();
+          height= pile.getHeight();
           slice1 = 1;
-          slice2 = profondeur;
+          slice2 = stacksize;
           Calibration cal = imp.getCalibration();
           double resXY = cal.pixelWidth;
             double Inten =   cal.pixelDepth;
@@ -136,7 +142,6 @@ import java.awt.*;
                   roimanager.add(imp, rorig, 0);
               }
           }
-          //Hashtable tableroi = roimanager.getROIs();
           nbRois = roimanager.getCount();
           IJ.log("processing " + nbRois + "rois");
           Roi[] RoisOrig = roimanager.getRoisAsArray();
@@ -156,25 +161,23 @@ import java.awt.*;
               regmax = reg;
               // ?
               // init result
-              pile_resultat = new ImageStack(largeur, hauteur, java.awt.image.ColorModel.getRGBdefault());
+              pile_resultat = new ImageStack(length, height, java.awt.image.ColorModel.getRGBdefault());
               if (createsegimage) {
-                  pile_seg = new ImageStack(largeur, hauteur);
+                  pile_seg = new ImageStack(length, height);
               }
              
               // update of the display
               String label = "" + imp.getTitle();
-              for (int z = 0; z < profondeur; z++) {
+              for (int z = 0; z < stacksize; z++) {
                   pile_resultat.addSlice(label, pile.getProcessor(z + 1).duplicate().convertToRGB());
               }
-              //final ImagePlus imp_resultat = new ImagePlus(imp.getTitle() + "_ABsnake_", pile_resultat);
-              //imp_resultat.show();
+            
               int nbcpu = 1;
               Thread[] threads = new Thread[nbcpu];
               AtomicInteger k = new AtomicInteger(0);
               ABSnake[] snakes = new ABSnake[RoisOrig.length];
 
-              // for all slices
-              // display in RGB color
+              //display sices in RGB color
               ColorProcessor image;
               ImagePlus plus;
 
@@ -234,7 +237,7 @@ import java.awt.*;
                       double IntensityRoi = getIntensity(imagep, RoisResult[i]);
                       
                       if (saveIntensity){
-                      	snake.writeIntensities(usefolder + "//" + "RoiIntensity" + (i + 1) + "-z", z, resXY, Inten,  IntensityRoi);
+                      	snake.writeIntensities(usefolder + "//" + "RoiIntensitySecframe" + (i + 1) + "-z", z, resXY, Inten,  IntensityRoi);
                       	
                       	
                       }
@@ -244,7 +247,7 @@ import java.awt.*;
               }
 
 
-              new ImagePlus("Draw", pile_resultat).show();
+              new ImagePlus("Snake Result", pile_resultat).show();
               if (createsegimage) {
                   new ImagePlus("Seg", pile_seg).show();
               }
@@ -266,10 +269,10 @@ import java.awt.*;
           gd.addNumericField("Gradient_threshold:", seuil, 0);
           gd.addNumericField("Number_of_iterations:", ite, 0);
           gd.addNumericField("Step_result_show:", step, 0);
-          //if (profondeur == 1) {
+          //if (stacksize == 1) {
           gd.addCheckbox("Save intermediate images", movie);
           //}
-          if (profondeur > 1) {
+          if (stacksize > 1) {
               gd.addNumericField("First_slice:", slice1, 0);
               gd.addNumericField("Last_slice:", slice2, 0);
               gd.addCheckbox("Propagate roi", propagate);
@@ -294,14 +297,14 @@ import java.awt.*;
           ite = (int) gd.getNextNumber();
           // step of display
           step = (int) gd.getNextNumber();
-          //if (profondeur == 1) {
+          //if (stacksize == 1) {
           movie = gd.getNextBoolean();
           //}
           if (step > ite - 1) {
               IJ.showStatus("Warning : show step too big\n\t step assignation 1");
               step = 1;
           }
-          if (profondeur > 1) {
+          if (stacksize > 1) {
               slice1 = (int) gd.getNextNumber();
               slice2 = (int) gd.getNextNumber();
               propagate = gd.getNextBoolean();

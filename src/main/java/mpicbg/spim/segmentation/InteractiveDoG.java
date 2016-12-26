@@ -986,11 +986,10 @@ public class InteractiveDoG implements PlugIn
 	{
 		new ImageJ();
 		
-		ImagePlus imp = new Opener().openImage( "/Users/varunkapoor/res/test_blobs.tif" );
+		ImagePlus imp = new Opener().openImage( "/Users/varunkapoor/res/mCherry-test.tif" );
 		//ImagePlus imp = new Opener().openImage( "D:/Documents and Settings/Stephan/My Documents/Downloads/1-315--0.08-isotropic-subvolume/1-315--0.08-isotropic-subvolume.tif" );
 		imp.show();
 		
-		imp.setSlice( 27 );		
 		imp.setRoi( imp.getWidth()/4, imp.getHeight()/4, imp.getWidth()/2, imp.getHeight()/2 );		
 		
 		new InteractiveDoG().run( null ); 	

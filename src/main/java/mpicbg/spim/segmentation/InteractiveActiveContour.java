@@ -13,9 +13,11 @@ import ij.gui.OvalRoi;
 import ij.gui.Overlay;
 import ij.gui.Roi;
 import ij.io.Opener;
+import ij.measure.Calibration;
 import ij.plugin.PlugIn;
 import ij.plugin.frame.RoiManager;
 import ij.process.ByteProcessor;
+import ij.process.ColorProcessor;
 import ij.process.FloatProcessor;
 import ij.process.ImageProcessor;
 import ij.process.ShortProcessor;
@@ -93,7 +95,11 @@ public class InteractiveActiveContour implements PlugIn
 	float sigmaMin = 0.5f;
 	float sigmaMax = 10f;
 	int sigmaInit = 300;
-
+	 // ROI original
+    int nbRois;
+    Roi rorig = null;
+    Roi processRoi = null;
+    Color colorDraw = null;
 	float thresholdMin = 0.0001f;
 	float thresholdMax = 1f;
 	int thresholdInit = 500;
@@ -107,9 +113,18 @@ public class InteractiveActiveContour implements PlugIn
 	int channel = 0;
 	Rectangle rectangle;
 	Image<FloatType> img;
+	ImageStack pile = null;
+	 ImageStack pile_resultat = null;
+     ImageStack pile_seg = null;
+     int currentSlice = -1;
+     // Dimensions of the stck :
+     int stacksize = 0;
+     int length = 0;
+     int height= 0;
 	FloatImagePlus< net.imglib2.type.numeric.real.FloatType > source;
 	ArrayList<DifferenceOfGaussianPeak<FloatType>> peaks;
-	
+	// first and last slice to process
+    int slice1, slice2, currentslice;
 	Color originalColor = new Color( 0.8f, 0.8f, 0.8f );
 	Color inactiveColor = new Color( 0.95f, 0.95f, 0.95f );
 	public Rectangle standardRectangle;
@@ -118,7 +133,7 @@ public class InteractiveActiveContour implements PlugIn
 	boolean isStarted = false;
 	boolean enableSigma2 = false;
 	boolean sigma2IsAdjustable = true;
-	
+	boolean propagate = true;
 	boolean lookForMinima = false;
 	boolean lookForMaxima = true;
 	
@@ -166,6 +181,87 @@ public class InteractiveActiveContour implements PlugIn
 	public void setMinIntensityImage( final double min ) { this.minIntensityImage = min; }
 	public void setMaxIntensityImage( final double max ) { this.maxIntensityImage = max; }
 
+	/*
+	public void run (ImageProcessor ip){
+		
+		pile = imp.getStack();
+		standardRectangle = new Rectangle( imp.getWidth()/4, imp.getHeight()/4, imp.getWidth()/2, imp.getHeight()/2 );
+		// sizes of the stack
+        stacksize = pile.getSize();
+        length = pile.getWidth();
+        height= pile.getHeight();
+        slice1 = 1;
+        slice2 = stacksize;
+        Calibration cal = imp.getCalibration();
+       
+        displaySliders();
+
+        // init result
+        pile_resultat = new ImageStack(length, height, java.awt.image.ColorModel.getRGBdefault());
+       
+       
+        // update of the display
+        String label = "" + imp.getTitle();
+        for (int z = 0; z < stacksize; z++) {
+            pile_resultat.addSlice(label, pile.getProcessor(z + 1).duplicate().convertToRGB());
+        }
+     // display sices in RGB color
+        ColorProcessor image;
+        ImagePlus plus;
+        int sens = slice1 < slice2 ? 1 : -1;
+		
+		
+		if ( imp.getType() == ImagePlus.COLOR_RGB || imp.getType() == ImagePlus.COLOR_256 )
+		{			
+			IJ.log( "Color images are not supported, please convert to 8, 16 or 32-bit grayscale" );
+			return;
+		}
+		
+		Roi roi = imp.getRoi();
+		
+		if ( roi == null )
+		{
+			//IJ.log( "A rectangular ROI is required to define the area..." );
+			imp.setRoi( standardRectangle );
+			roi = imp.getRoi();
+		}
+		
+		if ( roi.getType() != Roi.RECTANGLE )
+		{
+			IJ.log( "Only rectangular rois are supported..." );
+			return;
+		}
+		
+ //		Display dialogue for stacks
+		 boolean dialog = Dialogue();
+		// show the interactive kit
+		displaySliders();
+		 if (dialog) {
+		int z = slice1;
+            image = (ColorProcessor) (pile_resultat.getProcessor(z).duplicate());
+            plus = new ImagePlus("Roi " + z, image);
+         
+           
+    		// copy the ImagePlus into an ArrayImage<FloatType> for faster access
+    		source = convertToFloat( plus, channel, z, minIntensityImage, maxIntensityImage );
+    		
+    		
+
+    		// add listener to the imageplus slice slider
+    		sliceObserver = new SliceObserver( imp, new ImagePlusListener() );
+    		// compute first version
+    		updatePreview( ValueChange.ALL );		
+    		isStarted = true; 
+    		
+    	
+    		
+		roiListener = new RoiListener();
+		imp.getCanvas().addMouseListener( roiListener );
+		 } // dialog
+		 System.gc();
+	}
+	
+	*/
 	@Override
 	public void run( String arg )
 	{
@@ -197,29 +293,38 @@ public class InteractiveActiveContour implements PlugIn
 			IJ.log( "Only rectangular rois are supported..." );
 			return;
 		}
+	
 		
-		// copy the ImagePlus into an ArrayImage<FloatType> for faster access
-		source = convertToFloat( imp, channel, 0, minIntensityImage, maxIntensityImage );
-		
-		// show the interactive kit
-		displaySliders();
+	
+        slice1 = 1;
+        slice2 = stacksize;
+        currentslice = slice1;
+        	int z = slice1;
+			
+    		// copy the ImagePlus into an ArrayImage<FloatType> for faster access
+    		source = convertToFloat( imp, channel, z - 1, 
+    				minIntensityImage, maxIntensityImage );
+    		
+    		
+    		// show the interactive kit
+    		displaySliders();
 
-		// add listener to the imageplus slice slider
-		sliceObserver = new SliceObserver( imp, new ImagePlusListener() );
-
-		// compute first version
-		updatePreview( ValueChange.ALL );		
-		isStarted = true;
+    		// add listener to the imageplus slice slider
+    		sliceObserver = new SliceObserver( imp, new ImagePlusListener() );	
+    		// compute first version
+    		updatePreview( ValueChange.ALL );		
+    		isStarted = true;
+    		
+    		
+    		// check whenever roi is modified to update accordingly
+    		roiListener = new RoiListener();
+    		imp.getCanvas().addMouseListener( roiListener );
+            
+            
 		
-		// Modify Roi by running snakes
 		
 		
 		
-		
-		
-		// check whenever roi is modified to update accordingly
-		roiListener = new RoiListener();
-		imp.getCanvas().addMouseListener( roiListener );
 	}
 	
 	/**
@@ -227,8 +332,13 @@ public class InteractiveActiveContour implements PlugIn
 	 * 
 	 * @param change - what did change
 	 */
+	
 	protected void updatePreview( final ValueChange change )
 	{		
+		
+		
+		
+
 		// check if Roi changed
 		boolean roiChanged = false;
 		Roi roi = imp.getRoi();
@@ -241,7 +351,6 @@ public class InteractiveActiveContour implements PlugIn
 		}
 			
 		final Rectangle rect = roi.getBounds();
-				
 		if ( roiChanged || img == null || change == ValueChange.SLICE || 
 			 rect.getMinX() != rectangle.getMinX() || rect.getMaxX() != rectangle.getMaxX() ||
 			 rect.getMinY() != rectangle.getMinY() || rect.getMaxY() != rectangle.getMaxY() )
@@ -257,7 +366,7 @@ public class InteractiveActiveContour implements PlugIn
 			isComputing = false;
 			return;
 		}
-		
+	
 		// compute the Difference Of Gaussian if necessary
 		if ( peaks == null || roiChanged || change == ValueChange.SIGMA || change == ValueChange.SLICE || change == ValueChange.ALL )
 		{
@@ -298,6 +407,7 @@ public class InteractiveActiveContour implements PlugIn
 			peaks = dog.getPeaks();
 		}
 		
+
 		// extract peaks to show
 		Overlay o = imp.getOverlay();
 		
@@ -320,7 +430,8 @@ public class InteractiveActiveContour implements PlugIn
 		
 		 Roi[] RoisOrig = roimanager.getRoisAsArray();
 			
-			if (change == ValueChange.ROI && RoisOrig!=null){
+			if (change == ValueChange.ROI || change == ValueChange.SIGMA || change == ValueChange.MINMAX || change == ValueChange.SLICE 
+					|| change == ValueChange.THRESHOLD && RoisOrig!=null){
 				
 				for (int index = 0; index < RoisOrig.length; ++index){
 			     roimanager.deselect(RoisOrig[index]);
@@ -340,7 +451,6 @@ public class InteractiveActiveContour implements PlugIn
 			{
 				final float x = peak.getPosition( 0 ); 
 				final float y = peak.getPosition( 1 );
-				
 				if ( Math.abs( peak.getValue().get() ) > threshold &&
 					 x >= extraSize/2 && y >= extraSize/2 &&
 					 x < rect.width+extraSize/2 && y < rect.height+extraSize/2 )
@@ -368,6 +478,59 @@ public class InteractiveActiveContour implements PlugIn
 		
 		isComputing = false;
 	}
+	protected class snakeButtonListener implements ActionListener
+	{
+		@Override
+		public void actionPerformed( final ActionEvent arg0 ) 
+		{
+		
+			
+			
+			
+			ImagePlus newimp = new ImagePlus("Currentslice " + currentslice, imp.getImageStack().getProcessor(currentslice).duplicate());
+			Roi roi = imp.getRoi();
+			final Rectangle rect = roi.getBounds();
+			InteractiveSnake snake = new InteractiveSnake(newimp);
+			
+			
+		    
+		    
+			for ( final DifferenceOfGaussianPeak<FloatType> peak : peaks )
+			{
+				if ( ( peak.isMax() && lookForMaxima ) || ( peak.isMin() && lookForMinima ) )
+				{
+					final float x = peak.getPosition( 0 ); 
+					final float y = peak.getPosition( 1 );
+					
+					if ( Math.abs( peak.getValue().get() ) > threshold &&
+						 x >= extraSize/2 && y >= extraSize/2 &&
+						 x < rect.width+extraSize/2 && y < rect.height+extraSize/2 )
+					{
+						final OvalRoi or = new OvalRoi( Util.round( x - sigma ) + rect.x - extraSize/2, Util.round( y - sigma ) + rect.y - extraSize/2, Util.round( sigma+sigma2 ), Util.round( sigma+sigma2 ) );
+						
+						if ( peak.isMax() )
+							or.setStrokeColor( Color.green );
+						else if ( peak.isMin() )
+							or.setStrokeColor( Color.red );
+						
+						newimp.setRoi(or);
+						
+						
+					   
+					  
+					   
+					}
+					
+				}
+			}
+			
+			
+			ImageProcessor ip = newimp.getProcessor();
+				snake.run(ip);
+			
+		}
+	}
+
 	
 	public static float computeSigma2( final float sigma1, final int sensitivity )
 	{
@@ -530,6 +693,21 @@ public class InteractiveActiveContour implements PlugIn
 	/**
 	 * Instantiates the panel for adjusting the paramters
 	 */
+	
+	private boolean Dialogue() {
+	  GenericDialog gd = new GenericDialog("DoG for Stack");
+	    if (stacksize > 1) {
+	    	gd.addNumericField("First_slice:", slice1, 0);
+          gd.addNumericField("Last_slice:", slice2, 0);
+          gd.addCheckbox("Compute Maxima for all stack", propagate);
+          slice1 = (int) gd.getNextNumber();
+          slice2 = (int) gd.getNextNumber();
+          propagate = gd.getNextBoolean();
+          gd.showDialog();
+	    }
+	    return !gd.wasCanceled();
+	}
+	    
 	protected void displaySliders()
 	{
 		final Frame frame = new Frame("Adjust Difference-of-Gaussian Values");
@@ -555,10 +733,11 @@ public class InteractiveActiveContour implements PlugIn
 	    final Label sigmaText2 = new Label( "Sigma 2 = " + this.sigma2, Label.CENTER );
 	    	    
 	    final Label thresholdText = new Label( "Threshold = " + this.threshold, Label.CENTER );
-	    final Button apply = new Button( "Apply to Stack (will take some time)" );
+	  
+	    
 	    final Button button = new Button( "Done" );
 	    final Button cancel = new Button( "Cancel" );
-	    final Button snakes = new Button( "Applying snakes to Roi" );
+	    final Button snakes = new Button( "Apply snakes to Roi's" );
 	    
 	    final Checkbox sigma2Enable = new Checkbox( "Enable Manual Adjustment of Sigma 2 ", enableSigma2 );
 	    final Checkbox min = new Checkbox( "Look for Minima (red)", lookForMinima );
@@ -602,9 +781,7 @@ public class InteractiveActiveContour implements PlugIn
 	    c.insets = new Insets(0,125,0,75);
 	    frame.add( max, c );
 
-	    ++c.gridy;
-	    c.insets = new Insets(0,75,0,75);
-	    frame.add( apply, c );
+	   
 	    
 	    ++c.gridy;
 	    c.insets = new Insets(10,75,10,75);
@@ -625,7 +802,6 @@ public class InteractiveActiveContour implements PlugIn
 	    threshold.addAdjustmentListener( new ThresholdListener( thresholdText, thresholdMin, thresholdMax ) );
 	    button.addActionListener( new FinishedButtonListener( frame, false ) );
 	    cancel.addActionListener( new FinishedButtonListener( frame, true ) );
-		apply.addActionListener( new ApplyButtonListener() );
 		snakes.addActionListener(new snakeButtonListener());
 		min.addItemListener( new MinListener() );
 		max.addItemListener( new MaxListener() );
@@ -798,7 +974,7 @@ public class InteractiveActiveContour implements PlugIn
 			
 			for ( final DifferenceOfGaussianPeak<FloatType> peak : peaks )
 			{
-				final LocalizablePoint p = new LocalizablePoint( new float[]{ peak.getSubPixelPosition( 0 ), peak.getSubPixelPosition( 1 ), peak.getSubPixelPosition( 2 ) } );
+				final LocalizablePoint p = new LocalizablePoint( new float[]{ peak.getSubPixelPosition( 0 ), peak.getSubPixelPosition( 1 )} );
 				
 				c.setPosition( p );
 				c.getType().set( 1 );
@@ -818,55 +994,6 @@ public class InteractiveActiveContour implements PlugIn
 	}
 
 	
-	protected class snakeButtonListener implements ActionListener
-	{
-		@Override
-		public void actionPerformed( final ActionEvent arg0 ) 
-		{
-			ImagePlus newimp = imp;
-			Roi roi = imp.getRoi();
-			final Rectangle rect = roi.getBounds();
-			InteractiveSnake snake = new InteractiveSnake(imp);
-			
-			
-		    
-		    
-			for ( final DifferenceOfGaussianPeak<FloatType> peak : peaks )
-			{
-				if ( ( peak.isMax() && lookForMaxima ) || ( peak.isMin() && lookForMinima ) )
-				{
-					final float x = peak.getPosition( 0 ); 
-					final float y = peak.getPosition( 1 );
-					
-					if ( Math.abs( peak.getValue().get() ) > threshold &&
-						 x >= extraSize/2 && y >= extraSize/2 &&
-						 x < rect.width+extraSize/2 && y < rect.height+extraSize/2 )
-					{
-						final OvalRoi or = new OvalRoi( Util.round( x - sigma ) + rect.x - extraSize/2, Util.round( y - sigma ) + rect.y - extraSize/2, Util.round( sigma+sigma2 ), Util.round( sigma+sigma2 ) );
-						
-						if ( peak.isMax() )
-							or.setStrokeColor( Color.green );
-						else if ( peak.isMin() )
-							or.setStrokeColor( Color.red );
-						
-						newimp.setRoi(or);
-						
-						
-					   
-					  
-					   
-					}
-					
-				}
-			}
-			
-			
-			ImageProcessor ip = newimp.getProcessor();
-				snake.run(ip);
-			
-		}
-	}
-
 	
 	
 	
@@ -1085,6 +1212,8 @@ public class InteractiveActiveContour implements PlugIn
 					SimpleMultiThreading.threadWait( 10 );
 				}
 				updatePreview( ValueChange.SLICE );
+				
+				
 			}
 		}		
 	}
@@ -1093,15 +1222,18 @@ public class InteractiveActiveContour implements PlugIn
 	{
 		new ImageJ();
 		
-		ImagePlus imp = new Opener().openImage( "/Users/varunkapoor/res/bio-test.tif" );
+		ImagePlus imp = new Opener().openImage( "/Users/varunkapoor/res/mCherry-test.tif" );
 		imp.show();
 		
+		// Convert the image to 8-bit or 16-bit, very crucial for snakes
 		IJ.run("16-bit");
 		final ImagePlus currentimp = IJ.getImage();
 		
 			
 		currentimp.setRoi( currentimp.getWidth()/4, currentimp.getHeight()/4, 
 				currentimp.getWidth()/2, currentimp.getHeight()/2 );		
+		
+		//new InteractiveActiveContour(currentimp).run(currentimp.getProcessor());
 		
 		new InteractiveActiveContour(currentimp).run( null ); 
 		

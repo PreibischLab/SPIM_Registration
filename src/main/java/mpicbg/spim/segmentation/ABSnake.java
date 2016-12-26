@@ -226,7 +226,7 @@ public class ABSnake {
             BufferedWriter bw = new BufferedWriter(fw);
             bw.write("\tX\tY\tZ\tXcal\tYcal\tIntensity\tIntensitycal\n");
         
-                bw.write("\t" + nf.format(points[0].x) + "\t" + nf.format(points[0].y) + "\t" + nb + "\t" + nf.format(points[NPT - 1].x * resXY) + "\t" + nf.format(points[NPT - 1].y * resXY) +"\t" + nf.format(Intensity) + "\t"+ "\t" + nf.format(Intensity * Inten) + "\n");
+                bw.write("\t" + nf.format(points[0].x) + "\t" + nf.format(points[0].y) + "\t" + nb + "\t" + nf.format(points[0].x * resXY) + "\t" + nf.format(points[0].y * resXY) +"\t" + nf.format(Intensity) + "\t"+ "\t" + nf.format(Intensity * Inten) + "\n");
             
             bw.close();
             fw.close();
