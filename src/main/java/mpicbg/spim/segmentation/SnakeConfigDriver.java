@@ -6,130 +6,76 @@ package mpicbg.spim.segmentation;
  *@author     thomas
  *@created    11 mai 2004
  */
-public class SnakeConfigDriver {
+public class SnakeConfigDriver
+{
+  private double maxDisplacement0;
+  private double maxDisplacement1;
+  private double inv_alphaD0;
+  private double inv_alphaD1;
+  private double reg0;
+  private double reg1;
+  private double step;
 
-	private double maxDisplacement0;
-	private double maxDisplacement1;
-	private double inv_alphaD0;
-	private double inv_alphaD1;
-	private double reg0;
-	private double reg1;
-	private double step;
+  public SnakeConfigDriver()
+  {
+    this.maxDisplacement0 = 2.0D;
+    this.maxDisplacement1 = 0.1D;
+    this.inv_alphaD0 = 2.0D;
+    this.inv_alphaD1 = 0.5D;
+    this.reg0 = 2.0D;
+    this.reg1 = 0.1D;
+    this.step = 0.99D;
+  }
 
+  public void setMaxDisplacement(double min, double max)
+  {
+    this.maxDisplacement1 = min;
+    this.maxDisplacement0 = max;
+  }
 
+  public void setInvAlphaD(double min, double max)
+  {
+    this.inv_alphaD1 = min;
+    this.inv_alphaD0 = max;
+  }
 
-	/**
-	 *  Constructor for the snakeConfig object
-	 */
-	public SnakeConfigDriver() {
-		maxDisplacement0 = 2.0;
-		maxDisplacement1 = 0.1;
-		inv_alphaD0 = 1.0 / 0.5;
-		inv_alphaD1 = 1.0 / 2.0;
-		reg0 = 2.0;
-		reg1 = 0.1;
-		step = 0.99;
-	}
+  public void setReg(double min, double max)
+  {
+    this.reg1 = min;
+    this.reg0 = max;
+  }
 
+  public void setStep(double s)
+  {
+    this.step = s;
+  }
 
-	/**
-	 *  Sets the maxDisplacement attribute of the SnakeConfigDriver object
-	 *
-	 *@param  min  The new maxDisplacement value
-	 *@param  max  The new maxDisplacement value
-	 */
-	public void setMaxDisplacement(double min, double max) {
-		maxDisplacement1 = min;
-		maxDisplacement0 = max;
-	}
+  public double getStep()
+  {
+    return this.step;
+  }
 
+  public double getInvAlphaD(boolean min)
+  {
+    if (min) {
+      return this.inv_alphaD1;
+    }
+    return this.inv_alphaD0;
+  }
 
-	/**
-	 *  Sets the invAlphaD attribute of the SnakeConfigDriver object
-	 *
-	 *@param  min  The new invAlphaD value
-	 *@param  max  The new invAlphaD value
-	 */
-	public void setInvAlphaD(double min, double max) {
-		inv_alphaD1 = min;
-		inv_alphaD0 = max;
-	}
+  public double getMaxDisplacement(boolean min)
+  {
+    if (min) {
+      return this.maxDisplacement1;
+    }
+    return this.maxDisplacement0;
+  }
 
-
-	/**
-	 *  Sets the reg attribute of the SnakeConfigDriver object
-	 *
-	 *@param  min  The new reg value
-	 *@param  max  The new reg value
-	 */
-	public void setReg(double min, double max) {
-		reg1 = min;
-		reg0 = max;
-	}
-
-
-	/**
-	 *  Sets the step attribute of the SnakeConfigDriver object
-	 *
-	 *@param  s  The new step value
-	 */
-	public void setStep(double s) {
-		step = s;
-	}
-
-
-	/**
-	 *  Gets the step attribute of the SnakeConfigDriver object
-	 *
-	 *@return    The step value
-	 */
-	public double getStep() {
-		return step;
-	}
-
-
-	/**
-	 *  Gets the alphaD attribute of the SnakeConfigDriver object
-	 *
-	 *@param  min  Description of the Parameter
-	 *@return      The alphaD value
-	 */
-	public double getInvAlphaD(boolean min) {
-		if (min) {
-			return inv_alphaD1;
-		} else {
-			return inv_alphaD0;
-		}
-	}
-
-
-	/**
-	 *  Description of the Method
-	 *
-	 *@param  min  Description of the Parameter
-	 *@return      Description of the Return Value
-	 */
-	public double getMaxDisplacement(boolean min) {
-		if (min) {
-			return maxDisplacement1;
-		} else {
-			return maxDisplacement0;
-		}
-	}
-
-
-	/**
-	 *  Description of the Method
-	 *
-	 *@param  min  Description of the Parameter
-	 *@return      Description of the Return Value
-	 */
-	public double getReg(boolean min) {
-		if (min) {
-			return reg1;
-		} else {
-			return reg0;
-		}
-	}
-
+  public double getReg(boolean min)
+  {
+    if (min) {
+      return this.reg1;
+    }
+    return this.reg0;
+  }
 }

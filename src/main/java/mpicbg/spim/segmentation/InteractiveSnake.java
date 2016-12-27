@@ -22,11 +22,22 @@ package mpicbg.spim.segmentation;
   import ij.plugin.filter.PlugInFilter;
   import ij.plugin.frame.*;
   import ij.process.*;
+import mpicbg.imglib.algorithm.scalespace.DifferenceOfGaussianPeak;
+import mpicbg.imglib.type.numeric.real.FloatType;
+import net.imglib2.img.Img;
+import net.imglib2.img.display.imagej.ImageJFunctions;
+import net.imglib2.type.numeric.RealType;
 import spim.fiji.plugin.Max_Project;
 
 import java.awt.*;
-  import java.io.IOException;
-  import java.util.concurrent.atomic.AtomicInteger;
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.text.NumberFormat;
+import java.util.ArrayList;
+import java.util.Locale;
+import java.util.concurrent.atomic.AtomicInteger;
   import java.util.logging.Level;
   import java.util.logging.Logger;
 
@@ -35,6 +46,7 @@ import java.awt.*;
    *
    * @author thomas.boudier@snv.jussieu.fr and Philippe Andrey
    * @created 26 aout 2003
+   * @modified Dec 2015 by Varun Kapoor
    */
   public class InteractiveSnake implements PlugInFilter {
       // Sauvegarde de la fenetre d'image :
@@ -54,38 +66,41 @@ import java.awt.*;
       Roi rorig = null;
       Roi processRoi = null;
       Color colorDraw = null;
-     
+     ArrayList<SnakeObject> snakeList;
       int channel;
+      int Frame;
       
- public InteractiveSnake (){
-    	  
-    	  
-      }
+
       
       public InteractiveSnake (ImagePlus imp){
     	  
     	  this.imp = imp;
       }
       
-      public InteractiveSnake (ImagePlus imp, final int channel){
+      public InteractiveSnake (ImagePlus imp, final int Frame){
+    	  
+    	  this.imp = imp;
+    	  this.Frame = Frame;
+      }
+      public InteractiveSnake (ImagePlus imp, final int channel, final int Frame){
     	  
     	  this.imp = imp;
     	  this.channel = channel;
+    	  this.Frame = Frame;
       }
-      
       
       /**
        * Parametres of Snake :
        */
       SnakeConfigDriver configDriver;
       // number of iterations
-      int ite = 200;
+      int ite = 300;
       // step to display snake
-      int step = 100;
+      int step = ite - 1;
       // threshold of edges
-      int seuil = 10;
+      int Gradthresh = 5;
       // how far to look for edges
-      int DistMAX = Prefs.getInt("ABSnake_DistSearch.int", 20);
+      int DistMAX = Prefs.getInt("ABSnake_DistSearch.int", 50);
       // maximum displacement
       double force = 5.0;
       // regularization factors, min and max
@@ -95,16 +110,15 @@ import java.awt.*;
       int slice1, slice2;
       // misc options
       boolean showgrad = false;
-      boolean savecoords = false;
       boolean createsegimage = false;
       boolean advanced = false;
       boolean propagate = true;
       boolean movie = false;
-      boolean saveiterrois = false;
+      boolean saverois = true;
       boolean saveIntensity = true;
       boolean useroinames = false;
-      boolean nosizelessrois = false;
-      //boolean differentfolder=false;
+      boolean nosizelessrois = true;
+      boolean differentfolder=false;
       String usefolder = IJ.getDirectory("imagej");
       String addToName = "";
       // String[] RoisNames;
@@ -115,9 +129,11 @@ import java.awt.*;
        * @param ip image
        */
       public void run(ImageProcessor ip) {
+    	  
+    	
           // original stack
     	  
-    	  
+    	  snakeList = new ArrayList<SnakeObject>();
           pile = imp.getStack();
           // sizes of the stack
           stacksize = pile.getSize();
@@ -149,13 +165,12 @@ import java.awt.*;
           Roi[] RoisResult = new Roi[nbRois];
           System.arraycopy(RoisOrig, 0, RoisCurrent, 0, nbRois);
 
-          //RoisNames=new String[nbRois];
-          //for (int i = 0; i < nbRois; i++) {
-          //RoisNames[i]=roimanager.getName(i);
-          //}
           if (dialog) {
               configDriver = new SnakeConfigDriver();
               AdvancedParameters();
+              
+              if (advanced)
+            	  new ABSnake_AdvancedOptions().run(null);
               // ?
               regmin = reg / 2.0;
               regmax = reg;
@@ -172,10 +187,6 @@ import java.awt.*;
                   pile_resultat.addSlice(label, pile.getProcessor(z + 1).duplicate().convertToRGB());
               }
             
-              int nbcpu = 1;
-              Thread[] threads = new Thread[nbcpu];
-              AtomicInteger k = new AtomicInteger(0);
-              ABSnake[] snakes = new ABSnake[RoisOrig.length];
 
               //display sices in RGB color
               ColorProcessor image;
@@ -184,7 +195,6 @@ import java.awt.*;
               // NEW LOOP 15/12/2015
               Roi roi;
               ABSnake snake;
-              RoiEncoder saveRoi;
               ByteProcessor seg = null;
               int sens = slice1 < slice2 ? 1 : -1;
               for (int z = slice1; z != (slice2 + sens); z += sens) {
@@ -202,7 +212,10 @@ import java.awt.*;
                           // imp.setRoi(RoisOrig[i]);
                           roi = RoisOrig[i];
                       }
-                      IJ.log("processing slice " + z + " with roi " + i);
+                      IJ.log("processing slice " + Frame + " with roi " + i);
+                      IJ.selectWindow("Log");
+                     
+                	  IJ.saveAs("Text", usefolder + "//" + "Logsnakerun.txt");
                       snake = processSnake(plus, roi, z, i + 1);
                       snake.killImages();
 
@@ -220,34 +233,20 @@ import java.awt.*;
                           pile_seg.addSlice("Seg " + z, seg);
                       } // segmentation
 
-                      if (savecoords) {
-                          snake.writeCoordinates(usefolder + "//" + "ABSnake-r" + (i + 1) + "-z", z, resXY);
-                          if (nosizelessrois == false || (nosizelessrois == true && RoisResult[i].getFloatWidth() > 2 && RoisResult[i].getFloatHeight() > 2)) {
-                              try {
-                                  saveRoi = new RoiEncoder(usefolder + "//" + "ABSnake-r" + (i + 1) + "-z" + z + ".roi");
-                                  saveRoi.write(RoisResult[i]);
-                              } catch (IOException ex) {
-                                  Logger.getLogger(InteractiveSnake.class.getName()).log(Level.SEVERE, null, ex);
-                              }
-                          }
-                      } // save coord
-                      
+                
                       
                       ColorProcessor imagep = (ColorProcessor) (pile_resultat.getProcessor(z).duplicate());
+
+                      if (RoisResult[i]!=null){
                       double IntensityRoi = getIntensity(imagep, RoisResult[i]);
-                      
-                      if (saveIntensity){
-                      	snake.writeIntensities(usefolder + "//" + "RoiIntensitySecframe" + (i + 1) + "-z", z, resXY, Inten,  IntensityRoi);
-                      	
-                      	
+                      double[] center = getCentreofMass(imagep, RoisResult[i]);
+                      SnakeObject currentsnake = new SnakeObject(i, RoisResult[i], center, IntensityRoi);
+                      snakeList.add(currentsnake);
                       }
-                      
-                      
                   }
               }
 
 
-            //  new ImagePlus("Snake Result" , pile_resultat).show();
               if (createsegimage) {
                   new ImagePlus("Seg", pile_seg).show();
               }
@@ -255,10 +254,20 @@ import java.awt.*;
           System.gc();
       }
       
-      public ImageStack getResult(){
+     
+
+	public ImageStack getResult(){
     	  
     	  return pile_resultat;
       }
+      
+      public ArrayList<SnakeObject> getRoiList(){
+    	  
+    	  return snakeList;
+      }
+      
+    
+      
 
       /**
        * Dialog
@@ -271,7 +280,7 @@ import java.awt.*;
           int indexcol = 0;
           // create dialog
           GenericDialog gd = new GenericDialog("Snake");
-          gd.addNumericField("Gradient_threshold:", seuil, 0);
+          gd.addNumericField("Gradient_threshold:", Gradthresh, 0);
           gd.addNumericField("Number_of_iterations:", ite, 0);
           gd.addNumericField("Step_result_show:", step, 0);
           //if (stacksize == 1) {
@@ -283,20 +292,19 @@ import java.awt.*;
               gd.addCheckbox("Propagate roi", propagate);
           }
           gd.addChoice("Draw_color:", colors, colors[indexcol]);
-          gd.addCheckbox("Save_coords:", savecoords);
           gd.addCheckbox("Create_seg_image:", createsegimage);
-          gd.addCheckbox("Save_iteration_rois:", saveiterrois);
+          gd.addCheckbox("Save_rois:", saverois);
           gd.addCheckbox("Save_RoiIntensities:", saveIntensity);
           //gd.addCheckbox("Use_roi_names:", useroinames);
           gd.addCheckbox("No_sizeless_rois:", nosizelessrois);
-          //gd.addCheckbox("Use_different_folder", differentfolder);
+          gd.addCheckbox("Use_different_folder", differentfolder);
           gd.addStringField("Use_folder:", usefolder);
-          //gd.addCheckbox("Advanced_options", advanced);
+          gd.addCheckbox("Advanced_options", advanced);
           // show dialog
           gd.showDialog();
 
           // threshold of edge
-          seuil = (int) gd.getNextNumber();
+          Gradthresh = (int) gd.getNextNumber();
 
           // number of iterations
           ite = (int) gd.getNextNumber();
@@ -344,17 +352,16 @@ import java.awt.*;
               default:
                   colorDraw = Color.yellow;
           }
-          savecoords = gd.getNextBoolean();
           createsegimage = gd.getNextBoolean();
-          saveiterrois = gd.getNextBoolean();
+          saverois = gd.getNextBoolean();
           saveIntensity = gd.getNextBoolean();
           //useroinames=gd.getNextBoolean();
           nosizelessrois = gd.getNextBoolean();
-          //differentfolder=gd.getNextBoolean();
+          differentfolder=gd.getNextBoolean();
           //Vector<?> stringFields=gd.getStringFields();
           //usefolder=((TextField) stringFields.get(0)).getText();
           usefolder = gd.getNextString();
-          //advanced = gd.getNextBoolean();
+          advanced = gd.getNextBoolean();
 
           return !gd.wasCanceled();
       }
@@ -379,21 +386,12 @@ import java.awt.*;
        * @param numSlice which image of the stack
        */
       public ABSnake processSnake(ImagePlus plus, Roi roi, int numSlice, int numRoi) {
-          //int x;
-          //int y;
-          //int max;
-          //int min;
-          //int p;
+         
           int i;
-          //int NbPoints;
-          //double cou;
-          //double cour;
-          //double maxC;
-          //double scale;
+          
           SnakeConfig config;
 
-          //IJ.log("process " + numRoi + " " + numSlice + " " + plus + " " + roi);
-          // processRoi = imp.getRoi();
+         
           processRoi = roi;
 
           // initialisation of the snake
@@ -403,24 +401,19 @@ import java.awt.*;
 
           // start of computation
           IJ.showStatus("Calculating snake...");
-          //ColorProcessor image2;
-          //image2 = (ColorProcessor) image.duplicate();
-          // image2 = (ColorProcessor) (pile_resultat.getProcessor(numSlice).duplicate());
+          
 
-          //ImagePlus windowsTemp = new ImagePlus("Iteration", image2);
           if (step > 0) {
               plus.show();
           }
 
           double InvAlphaD = configDriver.getInvAlphaD(false);
-          //double InvAlphaDMin = configDriver.getInvAlphaD(true);
           double regMax = configDriver.getReg(false);
           double regMin = configDriver.getReg(true);
           double DisplMax = configDriver.getMaxDisplacement(false);
-          //double DisplMin = configDriver.getMaxDisplacement(true);
           double mul = configDriver.getStep();
 
-          config = new SnakeConfig(seuil, DisplMax, DistMAX, regMin, regMax, 1.0 / InvAlphaD);
+          config = new SnakeConfig(Gradthresh, DisplMax, DistMAX, regMin, regMax, 1.0 / InvAlphaD);
           snake.setConfig(config);
           // compute image gradient
           snake.computeGrad(pile.getProcessor(numSlice));
@@ -430,20 +423,16 @@ import java.awt.*;
 
           double dist0 = 0.0;
           double dist;
-          //double InvAlphaD0 = InvAlphaD;
-
-          //if(useroinames==true){
-          //addToName=RoisNames[numRoi];    
-          //IJ.log("Selected to use names, has name: "+addToName);
-          //}else{
-          //  IJ.log("Not selected to use names");
-          //}
+       
+          Roi oldRoi = snake.createRoi();
+          Roi newRoi = snake.createRoi();
           for (i = 0; i < ite; i++) {
               if (IJ.escapePressed()) {
                   break;
               }
               // each iteration
               dist = snake.process();
+              
               if ((dist >= dist0) && (dist < force)) {
                   //System.out.println("update " + config.getAlpha());
                   snake.computeGrad(pile.getProcessor(numSlice));
@@ -451,6 +440,13 @@ import java.awt.*;
               }
               dist0 = dist;
 
+              
+              
+            if (i > 0)
+            	newRoi = snake.createRoi();
+            
+           
+            
               // display of the snake
               if ((step > 0) && ((i % step) == 0)) {
                   IJ.showStatus("Show intermediate result (iteration n" + (i + 1) + ")");
@@ -465,6 +461,7 @@ import java.awt.*;
                       fs.saveAsTiff(usefolder + "//" + addToName + "ABsnake-r" + numRoi + "-t" + i + "-z" + numSlice + ".tif");
                   }
                   RoiEncoder saveRoi;
+                  /*
                   if (saveiterrois) {
                       try {
                           Roi roiToSave = snake.createRoi();
@@ -477,42 +474,14 @@ import java.awt.*;
                       }
 
                   }
+                  */
               }
+              oldRoi = newRoi;
           }
           
           
        
         
-        
-          // end iteration
-
-          // close temp window    
-          //plus.hide();
-
-          /*
-           // draw
-           snake.DrawSnake(image, colorDraw, 1);
-           ByteProcessor segImage;
-           if (createsegimage) {
-           segImage = snake.segmentation(image.getWidth(), image.getHeight(), numRoi);
-           segImage.setMinAndMax(0, nbRois);
-           if (currentSlice != numSlice) {
-           pile_seg.addSlice("" + numSlice, segImage);
-           currentSlice = numSlice;
-           } else {
-           (pile_seg.getProcessor(currentSlice)).copyBits(segImage, 0, 0, Blitter.ADD);
-           }
-           }
-           if (savecoords) {
-           snake.writeCoordinates("ABsnake-" + numRoi + "-", numSlice);
-           }
-           * 
-           */
-          //processRoi = new PolygonRoi(0, 0, imp);
-          //processRoi = snake.createRoi(imp);
-          // snake.kill();
-          //imp.killRoi();
-          //imp.setRoi(processRoi);
           snake.setOriginalImage(null);
 
           return snake;
@@ -531,7 +500,7 @@ import java.awt.*;
 			
 			for (int y=0; y<r.height; y++) {
 				for (int x=0; x<r.width; x++) {
-					if (mask==null||mask.getPixel(x,y)!=0) {
+					if (mask.getPixel(x,y)!=0) {
 
 						Intensity += ip.getPixelValue(x+r.x, y+r.y);
 					
@@ -543,6 +512,56 @@ import java.awt.*;
     	  
       }
       
+ public double[] getCentreofMass(ImageProcessor ip, Roi roi){
+    	  
+    	  double Intensity = 0;
+    	  double SumX = 0;
+    	  double SumY = 0;
+    	 double[] center = new double[ 2 ];
+			ImageProcessor mask = roi.getMask();
+			Rectangle r = roi.getBounds();
+			
+			
+			
+			for (int y=0; y<r.height; y++) {
+				for (int x=0; x<r.width; x++) {
+					if (mask.getPixel(x,y)!=0) {
+
+						Intensity += ip.getPixelValue(x+r.x, y+r.y);
+						SumX += (x + r.x) * ip.getPixelValue(x+r.x, y+r.y);
+						SumY += (y + r.y) * ip.getPixelValue(x+r.x, y+r.y);
+						
+					}
+				}
+			}
+			center[ 0 ] = SumX / Intensity;
+			center[ 1 ] = SumY / Intensity;
+			
+    	  return center;
+    	  
+      }
+      
+ public void writeIntensities(String nom, int nb,ArrayList<SnakeObject> currentsnakes) {
+     NumberFormat nf = NumberFormat.getInstance(Locale.ENGLISH);
+     nf.setMaximumFractionDigits(3);
+     try {
+         File fichier = new File(nom + nb + ".txt");
+         FileWriter fw = new FileWriter(fichier);
+         BufferedWriter bw = new BufferedWriter(fw);
+         bw.write("\tFramenumber\tRoiLabel\tCenterofMassX\tCenterofMassY\tIntensity\n");
+         for (int index = 0; index < currentsnakes.size(); ++index){
+        	 if (currentsnakes.get(index).centreofMass!= null){
+             bw.write("\t" + nb + "\t" + "\t" + currentsnakes.get(index).Label 
+            		 + "\t" +"\t" + nf.format(currentsnakes.get(index).centreofMass[0]) + "\t" +"\t" 
+         + nf.format(currentsnakes.get(index).centreofMass[1]) + "\t" +"\t" 
+            		 + nf.format(currentsnakes.get(index).Intensity)  + "\n");
+         }
+         }
+         bw.close();
+         fw.close();
+     } catch (IOException e) {
+     }
+ }
       /**
        * setup
        *
@@ -554,5 +573,8 @@ import java.awt.*;
           this.imp = imp;
           return DOES_8G + DOES_16 + DOES_32 + NO_CHANGES;
       }
+
+	
+	
   
   }

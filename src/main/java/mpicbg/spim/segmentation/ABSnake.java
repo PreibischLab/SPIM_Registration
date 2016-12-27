@@ -9,6 +9,7 @@ import ij.process.*;
 import java.awt.*;
 import java.io.*;
 import java.text.NumberFormat;
+import java.util.ArrayList;
 import java.util.Locale;
 
 /**
@@ -21,7 +22,7 @@ public class ABSnake {
 
     Point2d points[];
     Point2d normale[];
-    Point2d deplace[];
+    Point2d displacment[];
     double dataDistance;
     double lambda[];
     int etat[];
@@ -47,7 +48,7 @@ public class ABSnake {
     public void kill() {
         points = null;
         normale = null;
-        deplace = null;
+        displacment = null;
         lambda = null;
         etat = null;
         System.gc();
@@ -120,7 +121,7 @@ public class ABSnake {
      * @return The displacement value
      */
     public Point2d[] getDisplacement() {
-        return deplace;
+        return displacment;
     }
 
     /**
@@ -217,23 +218,25 @@ public class ABSnake {
      * @param nom file name
      * @param nb slice number
      */
-    public void writeIntensities(String nom, int nb, double resXY, double Inten, double Intensity) {
+    public void writeIntensities(String nom, int nb,ArrayList<SnakeObject> currentsnakes) {
         NumberFormat nf = NumberFormat.getInstance(Locale.ENGLISH);
         nf.setMaximumFractionDigits(3);
         try {
             File fichier = new File(nom + nb + ".txt");
             FileWriter fw = new FileWriter(fichier);
             BufferedWriter bw = new BufferedWriter(fw);
-            bw.write("\tX\tY\tZ\tXcal\tYcal\tIntensity\tIntensitycal\n");
-        
-                bw.write("\t" + nf.format(points[0].x) + "\t" + nf.format(points[0].y) + "\t" + nb + "\t" + nf.format(points[0].x * resXY) + "\t" + nf.format(points[0].y * resXY) +"\t" + nf.format(Intensity) + "\t"+ "\t" + nf.format(Intensity * Inten) + "\n");
-            
+            bw.write("\tFramenumber\tRoiLabel\tCenterofMassX\tCenterofMassY\tIntensity\n");
+            for (int index = 0; index < currentsnakes.size(); ++index){
+                bw.write("\t" + nb + "\t" + "\t" + currentsnakes.get(index).Label 
+               		 + "\t" +"\t" + nf.format(currentsnakes.get(index).centreofMass[0]) + "\t" +"\t" 
+            + nf.format(currentsnakes.get(index).centreofMass[1]) + "\t" +"\t" 
+               		 + nf.format(currentsnakes.get(index).Intensity)  + "\n");
+            }
             bw.close();
             fw.close();
         } catch (IOException e) {
         }
     }
-
     /**
      * creation of a polygon ROI
      *
@@ -266,7 +269,7 @@ public class ABSnake {
 
         points = new Point2d[NMAX];
         normale = new Point2d[NMAX];
-        deplace = new Point2d[NMAX];
+        displacment = new Point2d[NMAX];
         dataDistance = 0.0;
         etat = new int[NMAX];
         lambda = new double[NMAX];
@@ -274,7 +277,7 @@ public class ABSnake {
         for (i = 0; i < NMAX; i++) {
             points[i] = new Point2d();
             normale[i] = new Point2d();
-            deplace[i] = new Point2d();
+            displacment[i] = new Point2d();
         }
 
         //Calcul des points de la ROI
@@ -414,6 +417,8 @@ public class ABSnake {
                         temp[ii].y = points[i - 1].y + k * Dmoy * Ta.y;
                         ii++;
                         temp[ii] = new Point2d();
+                        if (ii >= NMAX / 2)
+                        	break;
                     }
                 }
                 i++;
@@ -429,6 +434,8 @@ public class ABSnake {
                     ii++;
                     temp[ii] = new Point2d();
                     i = j + 1;
+                    if (ii >= NMAX / 2)
+                    	break;
                 }
                 if (i == NPT - 1) {
                     i = NPT;
@@ -469,8 +476,8 @@ public class ABSnake {
         debtemp.y = points[deb].y;
 
         for (i = deb; i < fin; i++) {
-            bi.x = points[i].x + deplace[i].x;
-            bi.y = points[i].y + deplace[i].y;
+            bi.x = points[i].x + displacment[i].x;
+            bi.y = points[i].y + displacment[i].y;
             //gi = -lambda[i] * lambda[i + 1] - (lambda[i] * lambda[i]);
             //di = -lambda[i] * lambda[i + 1] - (lambda[i + 1] * lambda[i + 1]);
             //mi = (lambda[i] * lambda[i]) + 2.0 * lambda[i] * lambda[i + 1] + (lambda[i + 1] * lambda[i + 1]) + 1.0;
@@ -495,8 +502,8 @@ public class ABSnake {
         // LAST POINT
         if (closed) {
             i = fin;
-            bi.x = points[i].x + deplace[i].x;
-            bi.y = points[i].y + deplace[i].y;
+            bi.x = points[i].x + displacment[i].x;
+            bi.y = points[i].y + displacment[i].y;
             //gi = -lambda[i] * lambda[deb] - (lambda[i] * lambda[i]);
             //di = -lambda[i] * lambda[deb] - (lambda[deb] * lambda[deb]);
             //mi = (lambda[i] * lambda[i]) + 2.0 * lambda[i] * lambda[deb] + (lambda[deb] * lambda[deb]) + 1.0;
@@ -529,13 +536,13 @@ public class ABSnake {
 
             force = Math.sqrt(displ.x * displ.x + displ.y * displ.y);
             if (force > DivForce) {
-                deplace[i].x = DivForce * (displ.x / force);
-                deplace[i].y = DivForce * (displ.y / force);
+                displacment[i].x = DivForce * (displ.x / force);
+                displacment[i].y = DivForce * (displ.y / force);
             } else {
-                deplace[i].x = displ.x;
-                deplace[i].y = displ.y;
+                displacment[i].x = displ.x;
+                displacment[i].y = displ.y;
             }
-            force = Math.sqrt(deplace[i].x * deplace[i].x + deplace[i].y * deplace[i].y);
+            force = Math.sqrt(displacment[i].x * displacment[i].x + displacment[i].y * displacment[i].y);
 
             som += force;
         }
@@ -942,14 +949,14 @@ public class ABSnake {
         double maxr = config.getRegMax();
 
         for (int i = 0; i < NPT; i++) {
-            force = Math.sqrt(deplace[i].x * deplace[i].x + deplace[i].y * deplace[i].y);
+            force = Math.sqrt(displacment[i].x * displacment[i].x + displacment[i].y * displacment[i].y);
             if (force > maxforce) {
                 maxforce = force;
             }
         }
 
         for (int i = 0; i < NPT; i++) {
-            force = Math.sqrt(deplace[i].x * deplace[i].x + deplace[i].y * deplace[i].y);
+            force = Math.sqrt(displacment[i].x * displacment[i].x + displacment[i].y * displacment[i].y);
             lambda[i] = maxr / (1.0 + ((maxr - minr) / minr) * (force / maxforce));
         }
     }
@@ -1024,8 +1031,8 @@ public class ABSnake {
                 temp[j].y = points[i].y;
                 state[j] = etat[i];
                 fo[j] = new Point2d();
-                fo[j].x = deplace[i].x;
-                fo[j].y = deplace[i].y;
+                fo[j].x = displacment[i].x;
+                fo[j].y = displacment[i].y;
                 lan[j] = lambda[i];
                 j++;
             }
@@ -1036,8 +1043,8 @@ public class ABSnake {
             points[i].x = temp[i].x;
             points[i].y = temp[i].y;
             etat[i] = state[i];
-            deplace[i].x = fo[i].x;
-            deplace[i].y = fo[i].y;
+            displacment[i].x = fo[i].x;
+            displacment[i].y = fo[i].y;
             lambda[i] = lan[i];
         }
     }
@@ -1376,13 +1383,13 @@ public class ABSnake {
 
             force = Math.sqrt(Math.pow(displ.x, 2.0) + Math.pow(displ.y, 2.0));
             if (force > DivForce) {
-                deplace[i].x = DivForce * (displ.x / force);
-                deplace[i].y = DivForce * (displ.y / force);
+                displacment[i].x = DivForce * (displ.x / force);
+                displacment[i].y = DivForce * (displ.y / force);
             } else {
-                deplace[i].x = displ.x;
-                deplace[i].y = displ.y;
+                displacment[i].x = displ.x;
+                displacment[i].y = displ.y;
             }
-            force = Math.sqrt(deplace[i].x * deplace[i].x + deplace[i].y * deplace[i].y);
+            force = Math.sqrt(displacment[i].x * displacment[i].x + displacment[i].y * displacment[i].y);
             if (force > maxforce) {
                 maxforce = force;
             }
@@ -1391,13 +1398,15 @@ public class ABSnake {
         dataDistance = som / NPT;
 
         for (i = 0; i < NPT; i++) {
-            force = Math.sqrt(Math.pow(deplace[i].x, 2.0) + Math.pow(deplace[i].y, 2.0));
+            force = Math.sqrt(Math.pow(displacment[i].x, 2.0) + Math.pow(displacment[i].y, 2.0));
             lambda[i] = maxr / (1.0 + ((maxr - minr) / minr) * (force / maxforce));
         }
-        if (elimination == 1) {
+        if (elimination == 1 || dataDistance >= NMAX / 4) {
             destroysnake();
         }
 
+       
+        
         new_positions();
         resample(false);
 
