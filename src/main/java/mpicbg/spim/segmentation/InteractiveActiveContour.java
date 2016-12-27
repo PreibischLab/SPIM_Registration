@@ -46,6 +46,9 @@ import java.awt.event.WindowEvent;
 import java.util.ArrayList;
 import java.util.List;
 
+import mpicbg.imglib.algorithm.MultiThreaded;
+import mpicbg.imglib.algorithm.MultiThreadedAlgorithm;
+import mpicbg.imglib.algorithm.MultiThreadedBenchmarkAlgorithm;
 import mpicbg.imglib.algorithm.gauss.GaussianConvolutionReal;
 import mpicbg.imglib.algorithm.math.LocalizablePoint;
 import mpicbg.imglib.algorithm.scalespace.DifferenceOfGaussianPeak;
@@ -78,28 +81,27 @@ import spim.process.fusion.FusionHelper;
  * 
  * @author Varun Kapoor
  */
-public class InteractiveActiveContour implements PlugIn
-{
+public class InteractiveActiveContour implements PlugIn {
 	final int extraSize = 40;
 	final int scrollbarSize = 1000;
-		
+
 	float sigma = 0.5f;
 	float sigma2 = 0.5f;
 	float threshold = 0.0001f;
-	
+
 	// steps per octave
 	public static int standardSensitivity = 4;
 	int sensitivity = standardSensitivity;
-	
+
 	float imageSigma = 0.5f;
 	float sigmaMin = 0.5f;
 	float sigmaMax = 10f;
 	int sigmaInit = 300;
-	 // ROI original
-    int nbRois;
-    Roi rorig = null;
-    Roi processRoi = null;
-    Color colorDraw = null;
+	// ROI original
+	int nbRois;
+	Roi rorig = null;
+	Roi processRoi = null;
+	Color colorDraw = null;
 	float thresholdMin = 0.0001f;
 	float thresholdMax = 1f;
 	int thresholdInit = 500;
@@ -114,19 +116,19 @@ public class InteractiveActiveContour implements PlugIn
 	Rectangle rectangle;
 	Image<FloatType> img;
 	ImageStack pile = null;
-	 ImageStack pile_resultat = null;
-     ImageStack pile_seg = null;
-     int currentSlice = -1;
-     // Dimensions of the stck :
-     int stacksize = 0;
-     int length = 0;
-     int height= 0;
-	FloatImagePlus< net.imglib2.type.numeric.real.FloatType > source;
+	ImageStack pile_resultat = null;
+	ImageStack pile_seg = null;
+	int currentSlice = -1;
+	// Dimensions of the stck :
+	int stacksize = 0;
+	int length = 0;
+	int height = 0;
+	FloatImagePlus<net.imglib2.type.numeric.real.FloatType> source;
 	ArrayList<DifferenceOfGaussianPeak<FloatType>> peaks;
 	// first and last slice to process
-    int slice1, slice2, currentslice;
-	Color originalColor = new Color( 0.8f, 0.8f, 0.8f );
-	Color inactiveColor = new Color( 0.95f, 0.95f, 0.95f );
+	int slice2, currentslice;
+	Color originalColor = new Color(0.8f, 0.8f, 0.8f);
+	Color inactiveColor = new Color(0.95f, 0.95f, 0.95f);
 	public Rectangle standardRectangle;
 	public EllipseRoi standardEllipse;
 	boolean isComputing = false;
@@ -136,474 +138,563 @@ public class InteractiveActiveContour implements PlugIn
 	boolean propagate = true;
 	boolean lookForMinima = false;
 	boolean lookForMaxima = true;
-	
-	public static enum ValueChange { SIGMA, THRESHOLD, SLICE, ROI, MINMAX, ALL }
-	
+
+	public static enum ValueChange {
+		SIGMA, THRESHOLD, SLICE, ROI, MINMAX, ALL
+	}
+
 	boolean isFinished = false;
 	boolean wasCanceled = false;
-	public boolean isFinished() { return isFinished; }
-	public boolean wasCanceled() { return wasCanceled; }
-	public double getInitialSigma() { return sigma; }
-	public void setInitialSigma( final float value ) 
-	{ 
-		sigma = value; 
-		sigmaInit = computeScrollbarPositionFromValue( sigma, sigmaMin, sigmaMax, scrollbarSize );
+
+	public boolean isFinished() {
+		return isFinished;
 	}
-	public double getSigma2() { return sigma2; }
-	public double getThreshold() { return threshold; }
-	public void setThreshold( final float value ) 
-	{ 
+
+	public boolean wasCanceled() {
+		return wasCanceled;
+	}
+
+	public double getInitialSigma() {
+		return sigma;
+	}
+
+	public void setInitialSigma(final float value) {
+		sigma = value;
+		sigmaInit = computeScrollbarPositionFromValue(sigma, sigmaMin, sigmaMax, scrollbarSize);
+	}
+
+	public double getSigma2() {
+		return sigma2;
+	}
+
+	public double getThreshold() {
+		return threshold;
+	}
+
+	public void setThreshold(final float value) {
 		threshold = value;
-		final double log1001 = Math.log10( scrollbarSize + 1);
-		thresholdInit = (int)Math.round( 1001-Math.pow(10, -(((threshold - thresholdMin)/(thresholdMax-thresholdMin))*log1001) + log1001 ) );
+		final double log1001 = Math.log10(scrollbarSize + 1);
+		thresholdInit = (int) Math.round(1001
+				- Math.pow(10, -(((threshold - thresholdMin) / (thresholdMax - thresholdMin)) * log1001) + log1001));
 	}
-	public boolean getSigma2WasAdjusted() { return enableSigma2; }
-	public boolean getLookForMaxima() { return lookForMaxima; }
-	public boolean getLookForMinima() { return lookForMinima; }
-	public void setLookForMaxima( final boolean lookForMaxima ) { this.lookForMaxima = lookForMaxima; }
-	public void setLookForMinima( final boolean lookForMinima ) { this.lookForMinima = lookForMinima; }
-	
-	public void setSigmaMax( final float sigmaMax ) { this.sigmaMax = sigmaMax; }
-	public void setSigma2isAdjustable( final boolean state ) { sigma2IsAdjustable = state; }
-	
+
+	public boolean getSigma2WasAdjusted() {
+		return enableSigma2;
+	}
+
+	public boolean getLookForMaxima() {
+		return lookForMaxima;
+	}
+
+	public boolean getLookForMinima() {
+		return lookForMinima;
+	}
+
+	public void setLookForMaxima(final boolean lookForMaxima) {
+		this.lookForMaxima = lookForMaxima;
+	}
+
+	public void setLookForMinima(final boolean lookForMinima) {
+		this.lookForMinima = lookForMinima;
+	}
+
+	public void setSigmaMax(final float sigmaMax) {
+		this.sigmaMax = sigmaMax;
+	}
+
+	public void setSigma2isAdjustable(final boolean state) {
+		sigma2IsAdjustable = state;
+	}
+
 	// for the case that it is needed again, we can save one conversion
-	public FloatImagePlus< net.imglib2.type.numeric.real.FloatType > getConvertedImage() { return source; }
-	
-	public InteractiveActiveContour( final ImagePlus imp, final int channel ) 
-	{ 
+	public FloatImagePlus<net.imglib2.type.numeric.real.FloatType> getConvertedImage() {
+		return source;
+	}
+
+	public InteractiveActiveContour(final ImagePlus imp, final int channel) {
 		this.imp = imp;
 		this.channel = channel;
 	}
-	public InteractiveActiveContour( final ImagePlus imp ) { this.imp = imp; }
-	public InteractiveActiveContour() {}
-	
-	
-	public void setMinIntensityImage( final double min ) { this.minIntensityImage = min; }
-	public void setMaxIntensityImage( final double max ) { this.maxIntensityImage = max; }
 
-	/*
-	public void run (ImageProcessor ip){
-		
-		pile = imp.getStack();
-		standardRectangle = new Rectangle( imp.getWidth()/4, imp.getHeight()/4, imp.getWidth()/2, imp.getHeight()/2 );
+	public InteractiveActiveContour(final ImagePlus imp) {
+		this.imp = imp;
+	}
+
+	public InteractiveActiveContour() {
+	}
+
+	public void setMinIntensityImage(final double min) {
+		this.minIntensityImage = min;
+	}
+
+	public void setMaxIntensityImage(final double max) {
+		this.maxIntensityImage = max;
+	}
+
+	@Override
+	public void run(String arg) {
 		// sizes of the stack
-        stacksize = pile.getSize();
-        length = pile.getWidth();
-        height= pile.getHeight();
-        slice1 = 1;
-        slice2 = stacksize;
-        Calibration cal = imp.getCalibration();
-       
-        displaySliders();
+		stacksize = imp.getStack().getSize();
 
-        // init result
-        pile_resultat = new ImageStack(length, height, java.awt.image.ColorModel.getRGBdefault());
-       
-       
-        // update of the display
-        String label = "" + imp.getTitle();
-        for (int z = 0; z < stacksize; z++) {
-            pile_resultat.addSlice(label, pile.getProcessor(z + 1).duplicate().convertToRGB());
-        }
-     // display sices in RGB color
-        ColorProcessor image;
-        ImagePlus plus;
-        int sens = slice1 < slice2 ? 1 : -1;
-		
-		
-		if ( imp.getType() == ImagePlus.COLOR_RGB || imp.getType() == ImagePlus.COLOR_256 )
-		{			
-			IJ.log( "Color images are not supported, please convert to 8, 16 or 32-bit grayscale" );
+		slice2 = stacksize;
+
+		if (imp == null)
+			imp = WindowManager.getCurrentImage();
+
+		standardRectangle = new Rectangle(imp.getWidth() / 4, imp.getHeight() / 4, imp.getWidth() / 2,
+				imp.getHeight() / 2);
+
+		if (imp.getType() == ImagePlus.COLOR_RGB || imp.getType() == ImagePlus.COLOR_256) {
+			IJ.log("Color images are not supported, please convert to 8, 16 or 32-bit grayscale");
 			return;
 		}
-		
+
 		Roi roi = imp.getRoi();
 		
-		if ( roi == null )
-		{
-			//IJ.log( "A rectangular ROI is required to define the area..." );
-			imp.setRoi( standardRectangle );
+		if (roi == null) {
+			// IJ.log( "A rectangular ROI is required to define the area..." );
+			imp.setRoi(standardRectangle);
 			roi = imp.getRoi();
 		}
-		
-		if ( roi.getType() != Roi.RECTANGLE )
-		{
-			IJ.log( "Only rectangular rois are supported..." );
+
+		if (roi.getType() != Roi.RECTANGLE) {
+			IJ.log("Only rectangular rois are supported...");
 			return;
 		}
+
+
+		currentslice = imp.getFrame();
+		imp.setPosition(imp.getChannel(), imp.getSlice(), imp.getFrame());
 		
- //		Display dialogue for stacks
-		 boolean dialog = Dialogue();
+		
+       
+		
+		int z = currentslice;
+
+		// copy the ImagePlus into an ArrayImage<FloatType> for faster access
+		source = convertToFloat(imp, channel, z - 1, minIntensityImage, maxIntensityImage);
+
 		// show the interactive kit
 		displaySliders();
-		 if (dialog) {
-		int z = slice1;
-            image = (ColorProcessor) (pile_resultat.getProcessor(z).duplicate());
-            plus = new ImagePlus("Roi " + z, image);
-         
-           
-    		// copy the ImagePlus into an ArrayImage<FloatType> for faster access
-    		source = convertToFloat( plus, channel, z, minIntensityImage, maxIntensityImage );
-    		
-    		
 
-    		// add listener to the imageplus slice slider
-    		sliceObserver = new SliceObserver( imp, new ImagePlusListener() );
-    		// compute first version
-    		updatePreview( ValueChange.ALL );		
-    		isStarted = true; 
-    		
-    	
-    		
+		// add listener to the imageplus slice slider
+		sliceObserver = new SliceObserver(imp, new ImagePlusListener());
+		// compute first version#
+
+		updatePreview(ValueChange.ALL);
+		isStarted = true;
+
+		// check whenever roi is modified to update accordingly
 		roiListener = new RoiListener();
-		imp.getCanvas().addMouseListener( roiListener );
-		 } // dialog
-		 System.gc();
+		imp.getCanvas().addMouseListener(roiListener);
+		
 	}
-	
-	*/
-	@Override
-	public void run( String arg )
-	{
-		if ( imp == null )
-			imp = WindowManager.getCurrentImage();
-		
-		
-		standardRectangle = new Rectangle( imp.getWidth()/4, imp.getHeight()/4, imp.getWidth()/2, imp.getHeight()/2 );
-		
-		
-		
-		if ( imp.getType() == ImagePlus.COLOR_RGB || imp.getType() == ImagePlus.COLOR_256 )
-		{			
-			IJ.log( "Color images are not supported, please convert to 8, 16 or 32-bit grayscale" );
-			return;
-		}
-		
-		Roi roi = imp.getRoi();
-		
-		if ( roi == null )
-		{
-			//IJ.log( "A rectangular ROI is required to define the area..." );
-			imp.setRoi( standardRectangle );
-			roi = imp.getRoi();
-		}
-		
-		if ( roi.getType() != Roi.RECTANGLE )
-		{
-			IJ.log( "Only rectangular rois are supported..." );
-			return;
-		}
-	
-		
-	
-        slice1 = 1;
-        slice2 = stacksize;
-        currentslice = slice1;
-        	int z = slice1;
-			
-    		// copy the ImagePlus into an ArrayImage<FloatType> for faster access
-    		source = convertToFloat( imp, channel, z - 1, 
-    				minIntensityImage, maxIntensityImage );
-    		
-    		
-    		// show the interactive kit
-    		displaySliders();
 
-    		// add listener to the imageplus slice slider
-    		sliceObserver = new SliceObserver( imp, new ImagePlusListener() );	
-    		// compute first version
-    		updatePreview( ValueChange.ALL );		
-    		isStarted = true;
-    		
-    		
-    		// check whenever roi is modified to update accordingly
-    		roiListener = new RoiListener();
-    		imp.getCanvas().addMouseListener( roiListener );
-            
-            
-		
-		
-		
-		
+	private boolean Dialogue() {
+		GenericDialog gd = new GenericDialog("Choose Frame");
+
+		if (stacksize > 1) {
+	          gd.addNumericField("Move to frame", currentslice, 0);
+
+		}
+
+		gd.showDialog();
+		if (stacksize > 1) {
+	          currentslice = (int) gd.getNextNumber();
+
+		}
+		return !gd.wasCanceled();
 	}
-	
+
 	/**
-	 * Updates the Preview with the current parameters (sigma, threshold, roi, slicenumber)
+	 * Updates the Preview with the current parameters (sigma, threshold, roi,
+	 * slicenumber)
 	 * 
-	 * @param change - what did change
+	 * @param change
+	 *            - what did change
 	 */
-	
-	protected void updatePreview( final ValueChange change )
-	{		
-		
-		
-		
+
+	protected void updatePreview(final ValueChange change) {
 
 		// check if Roi changed
 		boolean roiChanged = false;
 		Roi roi = imp.getRoi();
-		
-		if ( roi == null || roi.getType() != Roi.RECTANGLE )
-		{
-			imp.setRoi( new Rectangle( standardRectangle ) );
+
+		if (roi == null || roi.getType() != Roi.RECTANGLE) {
+			imp.setRoi(new Rectangle(standardRectangle));
 			roi = imp.getRoi();
 			roiChanged = true;
 		}
-			
+
 		final Rectangle rect = roi.getBounds();
-		if ( roiChanged || img == null || change == ValueChange.SLICE || 
-			 rect.getMinX() != rectangle.getMinX() || rect.getMaxX() != rectangle.getMaxX() ||
-			 rect.getMinY() != rectangle.getMinY() || rect.getMaxY() != rectangle.getMaxY() )
-		{
+		if (roiChanged || img == null || change == ValueChange.SLICE || rect.getMinX() != rectangle.getMinX()
+				|| rect.getMaxX() != rectangle.getMaxX() || rect.getMinY() != rectangle.getMinY()
+				|| rect.getMaxY() != rectangle.getMaxY()) {
 			rectangle = rect;
-			img = extractImage( source, rectangle, extraSize );
+			img = extractImage(source, rectangle, extraSize);
 			roiChanged = true;
 		}
-		
+
 		// if we got some mouse click but the ROI did not change we can return
-		if ( !roiChanged && change == ValueChange.ROI )
-		{
+		if (!roiChanged && change == ValueChange.ROI) {
 			isComputing = false;
 			return;
 		}
-	
+
 		// compute the Difference Of Gaussian if necessary
-		if ( peaks == null || roiChanged || change == ValueChange.SIGMA || change == ValueChange.SLICE || change == ValueChange.ALL )
-		{
-	        //
-	        // Compute the Sigmas for the gaussian folding
-	        //
-			
+		if (peaks == null || roiChanged || change == ValueChange.SIGMA || change == ValueChange.SLICE
+				|| change == ValueChange.ALL) {
+			//
+			// Compute the Sigmas for the gaussian folding
+			//
+
 			final float k, K_MIN1_INV;
 			final float[] sigma, sigmaDiff;
-			
-			if ( enableSigma2 )
-			{				
-				sigma = new float[ 2 ];
-				sigma[ 0 ] = this.sigma;
-				sigma[ 1 ] = this.sigma2;
-				k = sigma[ 1 ] / sigma[ 0 ];
-				K_MIN1_INV = DetectionSegmentation.computeKWeight( k );
-				sigmaDiff = DetectionSegmentation.computeSigmaDiff( sigma, imageSigma );
+
+			if (enableSigma2) {
+				sigma = new float[2];
+				sigma[0] = this.sigma;
+				sigma[1] = this.sigma2;
+				k = sigma[1] / sigma[0];
+				K_MIN1_INV = DetectionSegmentation.computeKWeight(k);
+				sigmaDiff = DetectionSegmentation.computeSigmaDiff(sigma, imageSigma);
+			} else {
+				k = (float) DetectionSegmentation.computeK(sensitivity);
+				K_MIN1_INV = DetectionSegmentation.computeKWeight(k);
+				sigma = DetectionSegmentation.computeSigma(k, this.sigma);
+				sigmaDiff = DetectionSegmentation.computeSigmaDiff(sigma, imageSigma);
 			}
-			else
-			{
-		        k = (float)DetectionSegmentation.computeK( sensitivity );
-		        K_MIN1_INV = DetectionSegmentation.computeKWeight( k );
-		        sigma = DetectionSegmentation.computeSigma( k, this.sigma );
-		        sigmaDiff = DetectionSegmentation.computeSigmaDiff( sigma, imageSigma );
-			}
-			
-	        // the upper boundary
-	        this.sigma2 = sigma[ 1 ];
-	        
-			final DifferenceOfGaussianReal1<FloatType> dog = new DifferenceOfGaussianReal1<FloatType>( img, new OutOfBoundsStrategyValueFactory<FloatType>(), sigmaDiff[ 0 ], sigmaDiff[ 1 ], thresholdMin/4, K_MIN1_INV );
-			dog.setKeepDoGImage( true );
+
+			// the upper boundary
+			this.sigma2 = sigma[1];
+
+			final DifferenceOfGaussianReal1<FloatType> dog = new DifferenceOfGaussianReal1<FloatType>(img,
+					new OutOfBoundsStrategyValueFactory<FloatType>(), sigmaDiff[0], sigmaDiff[1], thresholdMin / 4,
+					K_MIN1_INV);
+			dog.setKeepDoGImage(true);
 			dog.process();
-			
-			final SubpixelLocalization<FloatType> subpixel = new SubpixelLocalization<FloatType>( dog.getDoGImage(), dog.getPeaks() );
+
+			final SubpixelLocalization<FloatType> subpixel = new SubpixelLocalization<FloatType>(dog.getDoGImage(),
+					dog.getPeaks());
 			subpixel.process();
-			
+
 			peaks = dog.getPeaks();
 		}
-		
 
 		// extract peaks to show
 		Overlay o = imp.getOverlay();
-		
-		if ( o == null )
-		{
+
+		if (o == null) {
 			o = new Overlay();
-			imp.setOverlay( o );
+			imp.setOverlay(o);
 		}
-		
+
 		o.clear();
 
-		 RoiManager roimanager = RoiManager.getInstance();
-		 
-			 
-		
-		
-		 if (roimanager == null){
+		RoiManager roimanager = RoiManager.getInstance();
+
+		if (roimanager == null) {
 			roimanager = new RoiManager();
-		 }
-		
-		 Roi[] RoisOrig = roimanager.getRoisAsArray();
-			
-			if (change == ValueChange.ROI || change == ValueChange.SIGMA || change == ValueChange.MINMAX || change == ValueChange.SLICE 
-					|| change == ValueChange.THRESHOLD && RoisOrig!=null){
-				
-				for (int index = 0; index < RoisOrig.length; ++index){
-			     roimanager.deselect(RoisOrig[index]);
-				}
-				roimanager.close();
-				roimanager = new RoiManager();
-				
-				}
-		 
-		 
-		 
-		 roimanager.setVisible(true);
-		 
-		for ( final DifferenceOfGaussianPeak<FloatType> peak : peaks )
-		{
-			if ( ( peak.isMax() && lookForMaxima ) || ( peak.isMin() && lookForMinima ) )
-			{
-				final float x = peak.getPosition( 0 ); 
-				final float y = peak.getPosition( 1 );
-				if ( Math.abs( peak.getValue().get() ) > threshold &&
-					 x >= extraSize/2 && y >= extraSize/2 &&
-					 x < rect.width+extraSize/2 && y < rect.height+extraSize/2 )
-				{
-					final OvalRoi or = new OvalRoi( Util.round( x - sigma ) + rect.x - extraSize/2, Util.round( y - sigma ) + rect.y - extraSize/2, Util.round( sigma+sigma2 ), Util.round( sigma+sigma2 ) );
-					
-					if ( peak.isMax() )
-						or.setStrokeColor( Color.green );
-					else if ( peak.isMin() )
-						or.setStrokeColor( Color.red );
-					
-					o.add( or );
+		}
+
+		Roi[] RoisOrig = roimanager.getRoisAsArray();
+
+		if (change == ValueChange.ROI || change == ValueChange.SIGMA || change == ValueChange.MINMAX
+				|| change == ValueChange.SLICE || change == ValueChange.THRESHOLD && RoisOrig != null) {
+
+			roimanager.close();
+			roimanager = new RoiManager();
+		}
+
+		for (final DifferenceOfGaussianPeak<FloatType> peak : peaks) {
+			if ((peak.isMax() && lookForMaxima) || (peak.isMin() && lookForMinima)) {
+				final float x = peak.getPosition(0);
+				final float y = peak.getPosition(1);
+				if (Math.abs(peak.getValue().get()) > threshold && x >= extraSize / 2 && y >= extraSize / 2
+						&& x < rect.width + extraSize / 2 && y < rect.height + extraSize / 2) {
+					final OvalRoi or = new OvalRoi(Util.round(x - sigma) + rect.x - extraSize / 2,
+							Util.round(y - sigma) + rect.y - extraSize / 2, Util.round(sigma + sigma2),
+							Util.round(sigma + sigma2));
+
+					if (peak.isMax())
+						or.setStrokeColor(Color.green);
+					else if (peak.isMin())
+						or.setStrokeColor(Color.red);
+
+					o.add(or);
 					roimanager.addRoi(or);
-					
+
 				}
-				
-					
-				
+
 			}
 		}
-		
-		
-		
+
 		imp.updateAndDraw();
-		
+
 		isComputing = false;
 	}
-	protected class snakeButtonListener implements ActionListener
-	{
+
+	protected class moveNextListener implements ActionListener {
 		@Override
-		public void actionPerformed( final ActionEvent arg0 ) 
-		{
+		public void actionPerformed(final ActionEvent arg0) {
 		
+			// add listener to the imageplus slice slider
+						sliceObserver = new SliceObserver(imp, new ImagePlusListener());
+						imp.setSlice(imp.getFrame());
+						
+						if (imp.getFrame() + 1 < stacksize){
+						imp.setSlice(imp.getFrame() + 1);
+						}
+						else
+							return;
+						currentslice = imp.getFrame();
+						standardRectangle = new Rectangle(imp.getWidth() / 4, imp.getHeight() / 4, imp.getWidth() / 2,
+								imp.getHeight() / 2);
+
+						if (imp.getType() == ImagePlus.COLOR_RGB || imp.getType() == ImagePlus.COLOR_256) {
+							IJ.log("Color images are not supported, please convert to 8, 16 or 32-bit grayscale");
+							return;
+						}
+
+						Roi roi = imp.getRoi();
+						if (roi == null) {
+							// IJ.log( "A rectangular ROI is required to define the area..."
+							// );
+							imp.setRoi(standardRectangle);
+							roi = imp.getRoi();
+						}
+
+						// copy the ImagePlus into an ArrayImage<FloatType> for faster
+						// access
+						source = convertToFloat(imp, channel, currentslice - 1, minIntensityImage, maxIntensityImage);
+
+						// show the interactive kit
+						displaySliders();
+
+						// compute first version
+						updatePreview(ValueChange.SLICE);
+						isStarted = true;
+
+						// check whenever roi is modified to update accordingly
+						roiListener = new RoiListener();
+						imp.getCanvas().addMouseListener(roiListener);
+
+						ImagePlus newimp = new ImagePlus("Currentslice " + currentslice,
+								imp.getImageStack().getProcessor(currentslice).duplicate());
+						final Rectangle rect = roi.getBounds();
+
+						for (final DifferenceOfGaussianPeak<FloatType> peak : peaks) {
+							if ((peak.isMax() && lookForMaxima) || (peak.isMin() && lookForMinima)) {
+								final float x = peak.getPosition(0);
+								final float y = peak.getPosition(1);
+
+								if (Math.abs(peak.getValue().get()) > threshold && x >= extraSize / 2 && y >= extraSize / 2
+										&& x < rect.width + extraSize / 2 && y < rect.height + extraSize / 2) {
+									final OvalRoi or = new OvalRoi(Util.round(x - sigma) + rect.x - extraSize / 2,
+											Util.round(y - sigma) + rect.y - extraSize / 2, Util.round(sigma + sigma2),
+											Util.round(sigma + sigma2));
+
+									if (peak.isMax())
+										or.setStrokeColor(Color.green);
+									else if (peak.isMin())
+										or.setStrokeColor(Color.red);
+
+									newimp.setRoi(or);
+
+								}
+
+							}
+						}
+
 			
-			
-			
-			ImagePlus newimp = new ImagePlus("Currentslice " + currentslice, imp.getImageStack().getProcessor(currentslice).duplicate());
+		}
+		}
+	
+	protected class snakeButtonListener implements ActionListener {
+		@Override
+		public void actionPerformed(final ActionEvent arg0) {
+
+			ImagePlus newimp = new ImagePlus("Currentslice " + currentslice,
+					imp.getImageStack().getProcessor(currentslice).duplicate());
 			Roi roi = imp.getRoi();
 			final Rectangle rect = roi.getBounds();
 			InteractiveSnake snake = new InteractiveSnake(newimp);
-			
-			
-		    
-		    
-			for ( final DifferenceOfGaussianPeak<FloatType> peak : peaks )
-			{
-				if ( ( peak.isMax() && lookForMaxima ) || ( peak.isMin() && lookForMinima ) )
-				{
-					final float x = peak.getPosition( 0 ); 
-					final float y = peak.getPosition( 1 );
-					
-					if ( Math.abs( peak.getValue().get() ) > threshold &&
-						 x >= extraSize/2 && y >= extraSize/2 &&
-						 x < rect.width+extraSize/2 && y < rect.height+extraSize/2 )
-					{
-						final OvalRoi or = new OvalRoi( Util.round( x - sigma ) + rect.x - extraSize/2, Util.round( y - sigma ) + rect.y - extraSize/2, Util.round( sigma+sigma2 ), Util.round( sigma+sigma2 ) );
-						
-						if ( peak.isMax() )
-							or.setStrokeColor( Color.green );
-						else if ( peak.isMin() )
-							or.setStrokeColor( Color.red );
-						
+
+			for (final DifferenceOfGaussianPeak<FloatType> peak : peaks) {
+				if ((peak.isMax() && lookForMaxima) || (peak.isMin() && lookForMinima)) {
+					final float x = peak.getPosition(0);
+					final float y = peak.getPosition(1);
+
+					if (Math.abs(peak.getValue().get()) > threshold && x >= extraSize / 2 && y >= extraSize / 2
+							&& x < rect.width + extraSize / 2 && y < rect.height + extraSize / 2) {
+						final OvalRoi or = new OvalRoi(Util.round(x - sigma) + rect.x - extraSize / 2,
+								Util.round(y - sigma) + rect.y - extraSize / 2, Util.round(sigma + sigma2),
+								Util.round(sigma + sigma2));
+
+						if (peak.isMax())
+							or.setStrokeColor(Color.green);
+						else if (peak.isMin())
+							or.setStrokeColor(Color.red);
+
 						newimp.setRoi(or);
-						
-						
-					   
-					  
-					   
+
 					}
-					
+
 				}
 			}
-			
-			
+
 			ImageProcessor ip = newimp.getProcessor();
-				snake.run(ip);
-			
+			snake.run(ip);
+
 		}
 	}
 
 	
-	public static float computeSigma2( final float sigma1, final int sensitivity )
-	{
-        final float k = (float)DetectionSegmentation.computeK( sensitivity );
-        final float[] sigma = DetectionSegmentation.computeSigma( k, sigma1 );
-        
-        return sigma[ 1 ];
-	}
 	
+	protected class AutoDoGButtonListener implements ActionListener {
+		@Override
+		public void actionPerformed(final ActionEvent arg0) {
+
+			// add listener to the imageplus slice slider
+			sliceObserver = new SliceObserver(imp, new ImagePlusListener());
+			imp.setSlice(imp.getFrame());
+			currentslice = imp.getFrame();
+			standardRectangle = new Rectangle(imp.getWidth() / 4, imp.getHeight() / 4, imp.getWidth() / 2,
+					imp.getHeight() / 2);
+
+			if (imp.getType() == ImagePlus.COLOR_RGB || imp.getType() == ImagePlus.COLOR_256) {
+				IJ.log("Color images are not supported, please convert to 8, 16 or 32-bit grayscale");
+				return;
+			}
+
+			Roi roi = imp.getRoi();
+			if (roi == null) {
+				// IJ.log( "A rectangular ROI is required to define the area..."
+				// );
+				imp.setRoi(standardRectangle);
+				roi = imp.getRoi();
+			}
+
+			// copy the ImagePlus into an ArrayImage<FloatType> for faster
+			// access
+			source = convertToFloat(imp, channel, currentslice - 1, minIntensityImage, maxIntensityImage);
+
+			// show the interactive kit
+			displaySliders();
+
+			// compute first version
+			updatePreview(ValueChange.SLICE);
+			isStarted = true;
+
+			// check whenever roi is modified to update accordingly
+			roiListener = new RoiListener();
+			imp.getCanvas().addMouseListener(roiListener);
+
+			ImagePlus newimp = new ImagePlus("Currentslice " + currentslice,
+					imp.getImageStack().getProcessor(currentslice).duplicate());
+			final Rectangle rect = roi.getBounds();
+
+			for (final DifferenceOfGaussianPeak<FloatType> peak : peaks) {
+				if ((peak.isMax() && lookForMaxima) || (peak.isMin() && lookForMinima)) {
+					final float x = peak.getPosition(0);
+					final float y = peak.getPosition(1);
+
+					if (Math.abs(peak.getValue().get()) > threshold && x >= extraSize / 2 && y >= extraSize / 2
+							&& x < rect.width + extraSize / 2 && y < rect.height + extraSize / 2) {
+						final OvalRoi or = new OvalRoi(Util.round(x - sigma) + rect.x - extraSize / 2,
+								Util.round(y - sigma) + rect.y - extraSize / 2, Util.round(sigma + sigma2),
+								Util.round(sigma + sigma2));
+
+						if (peak.isMax())
+							or.setStrokeColor(Color.green);
+						else if (peak.isMin())
+							or.setStrokeColor(Color.red);
+
+						newimp.setRoi(or);
+
+					}
+
+				}
+			}
+
+		}
+
+	}
+
+	public static float computeSigma2(final float sigma1, final int sensitivity) {
+		final float k = (float) DetectionSegmentation.computeK(sensitivity);
+		final float[] sigma = DetectionSegmentation.computeSigma(k, sigma1);
+
+		return sigma[1];
+	}
+
 	/**
 	 * Extract the current 2d region of interest from the souce image
 	 * 
-	 * @param source - the source image, a {@link Image} which is a copy of the {@link ImagePlus}
-	 * @param rectangle - the area of interest
-	 * @param extraSize - the extra size around so that detections at the border of the roi are not messed up
+	 * @param source
+	 *            - the source image, a {@link Image} which is a copy of the
+	 *            {@link ImagePlus}
+	 * @param rectangle
+	 *            - the area of interest
+	 * @param extraSize
+	 *            - the extra size around so that detections at the border of
+	 *            the roi are not messed up
 	 * @return
 	 */
-	protected Image<FloatType> extractImage( final FloatImagePlus< net.imglib2.type.numeric.real.FloatType > source, final Rectangle rectangle, final int extraSize )
-	{
-		final Image<FloatType> img = new ImageFactory<FloatType>( new FloatType(), new ArrayContainerFactory() ).createImage( new int[]{ rectangle.width+extraSize, rectangle.height+extraSize } );
-		
-		final int offsetX = rectangle.x - extraSize/2;
-		final int offsetY = rectangle.y - extraSize/2;
+	protected Image<FloatType> extractImage(final FloatImagePlus<net.imglib2.type.numeric.real.FloatType> source,
+			final Rectangle rectangle, final int extraSize) {
+		final Image<FloatType> img = new ImageFactory<FloatType>(new FloatType(), new ArrayContainerFactory())
+				.createImage(new int[] { rectangle.width + extraSize, rectangle.height + extraSize });
 
-		final int[] location = new int[ source.numDimensions() ];
-		
-		if ( location.length > 2 )
-			location[ 2 ] = (imp.getCurrentSlice()-1)/imp.getNChannels();
-				
+		final int offsetX = rectangle.x - extraSize / 2;
+		final int offsetY = rectangle.y - extraSize / 2;
+
+		final int[] location = new int[source.numDimensions()];
+
+		if (location.length > 2)
+			location[2] = (imp.getCurrentSlice() - 1) / imp.getNChannels();
+
 		final LocalizableCursor<FloatType> cursor = img.createLocalizableCursor();
 		final RandomAccess<net.imglib2.type.numeric.real.FloatType> positionable;
-		
-		if ( offsetX >= 0 && offsetY >= 0 && 
-			 offsetX + img.getDimension( 0 ) < source.dimension( 0 ) && 
-			 offsetY + img.getDimension( 1 ) < source.dimension( 1 ) )
-		{
+
+		if (offsetX >= 0 && offsetY >= 0 && offsetX + img.getDimension(0) < source.dimension(0)
+				&& offsetY + img.getDimension(1) < source.dimension(1)) {
 			// it is completely inside so we need no outofbounds for copying
 			positionable = source.randomAccess();
+		} else {
+			positionable = Views.extendMirrorSingle(source).randomAccess();
 		}
-		else
-		{
-			positionable = Views.extendMirrorSingle( source ).randomAccess();
-		}
-			
-		while ( cursor.hasNext() )
-		{
+
+		while (cursor.hasNext()) {
 			cursor.fwd();
-			cursor.getPosition( location );
-			
-			location[ 0 ] += offsetX;
-			location[ 1 ] += offsetY;
-			
-			positionable.setPosition( location );
-			
-			cursor.getType().set( positionable.get().get() );
+			cursor.getPosition(location);
+
+			location[0] += offsetX;
+			location[1] += offsetY;
+
+			positionable.setPosition(location);
+
+			cursor.getType().set(positionable.get().get());
 		}
-		
+
 		return img;
 	}
-	
+
 	/**
-	 * Normalize and make a copy of the {@link ImagePlus} into an {@link Image}&gt;FloatType&lt; for faster access when copying the slices
+	 * Normalize and make a copy of the {@link ImagePlus} into an {@link Image}
+	 * &gt;FloatType&lt; for faster access when copying the slices
 	 * 
-	 * @param imp - the {@link ImagePlus} input image
+	 * @param imp
+	 *            - the {@link ImagePlus} input image
 	 * @return - the normalized copy [0...1]
 	 */
-	public static FloatImagePlus< net.imglib2.type.numeric.real.FloatType > convertToFloat( final ImagePlus imp, int channel, int timepoint )
-	{
-		return convertToFloat( imp, channel, timepoint, Double.NaN, Double.NaN );
+	public static FloatImagePlus<net.imglib2.type.numeric.real.FloatType> convertToFloat(final ImagePlus imp,
+			int channel, int timepoint) {
+		return convertToFloat(imp, channel, timepoint, Double.NaN, Double.NaN);
 	}
 
-	public static FloatImagePlus< net.imglib2.type.numeric.real.FloatType > convertToFloat( final ImagePlus imp, int channel, int timepoint, final double min, final double max )
-	{
+	public static FloatImagePlus<net.imglib2.type.numeric.real.FloatType> convertToFloat(final ImagePlus imp,
+			int channel, int timepoint, final double min, final double max) {
 		// stupid 1-offset of imagej
 		channel++;
 		timepoint++;
@@ -611,633 +702,557 @@ public class InteractiveActiveContour implements PlugIn
 		final int h = imp.getHeight();
 		final int w = imp.getWidth();
 
-		final ArrayList< float[] > img = new ArrayList< float[] >();
+		final ArrayList<float[]> img = new ArrayList<float[]>();
 
-		if ( imp.getProcessor() instanceof FloatProcessor )
-		{
-			for ( int z = 0; z < imp.getNSlices(); ++z )
-				img.add( ( (float[])imp.getStack().getProcessor( imp.getStackIndex( channel, z + 1, timepoint ) ).getPixels() ).clone() );
-		}
-		else if ( imp.getProcessor() instanceof ByteProcessor )
-		{
-			for ( int z = 0; z < imp.getNSlices(); ++z )
-			{
-				final byte[] pixels = (byte[])imp.getStack().getProcessor( imp.getStackIndex( channel, z + 1, timepoint ) ).getPixels();
-				final float[] pixelsF = new float[ pixels.length ];
+		if (imp.getProcessor() instanceof FloatProcessor) {
+			for (int z = 0; z < imp.getNSlices(); ++z)
+				img.add(((float[]) imp.getStack().getProcessor(imp.getStackIndex(channel, z + 1, timepoint))
+						.getPixels()).clone());
+		} else if (imp.getProcessor() instanceof ByteProcessor) {
+			for (int z = 0; z < imp.getNSlices(); ++z) {
+				final byte[] pixels = (byte[]) imp.getStack().getProcessor(imp.getStackIndex(channel, z + 1, timepoint))
+						.getPixels();
+				final float[] pixelsF = new float[pixels.length];
 
-				for ( int i = 0; i < pixels.length; ++i )
-					pixelsF[ i ] = pixels[ i ] & 0xff;
+				for (int i = 0; i < pixels.length; ++i)
+					pixelsF[i] = pixels[i] & 0xff;
 
-				img.add( pixelsF );
+				img.add(pixelsF);
 			}
-		}
-		else if ( imp.getProcessor() instanceof ShortProcessor )
-		{
-			for ( int z = 0; z < imp.getNSlices(); ++z )
-			{
-				final short[] pixels = (short[])imp.getStack().getProcessor( imp.getStackIndex( channel, z + 1, timepoint ) ).getPixels();
-				final float[] pixelsF = new float[ pixels.length ];
+		} else if (imp.getProcessor() instanceof ShortProcessor) {
+			for (int z = 0; z < imp.getNSlices(); ++z) {
+				final short[] pixels = (short[]) imp.getStack()
+						.getProcessor(imp.getStackIndex(channel, z + 1, timepoint)).getPixels();
+				final float[] pixelsF = new float[pixels.length];
 
-				for ( int i = 0; i < pixels.length; ++i )
-					pixelsF[ i ] = pixels[ i ] & 0xffff;
+				for (int i = 0; i < pixels.length; ++i)
+					pixelsF[i] = pixels[i] & 0xffff;
 
-				img.add( pixelsF );
+				img.add(pixelsF);
 			}
-		}
-		else // some color stuff or so 
+		} else // some color stuff or so
 		{
-			for ( int z = 0; z < imp.getNSlices(); ++z )
-			{
-				final ImageProcessor ip = imp.getStack().getProcessor( imp.getStackIndex( channel, z + 1, timepoint ) );
-				final float[] pixelsF = new float[ w * h ];
+			for (int z = 0; z < imp.getNSlices(); ++z) {
+				final ImageProcessor ip = imp.getStack().getProcessor(imp.getStackIndex(channel, z + 1, timepoint));
+				final float[] pixelsF = new float[w * h];
 
 				int i = 0;
 
-				for ( int y = 0; y < h; ++y )
-					for ( int x = 0; x < w; ++x )
-						pixelsF[ i++ ] = ip.getPixelValue( x, y );
+				for (int y = 0; y < h; ++y)
+					for (int x = 0; x < w; ++x)
+						pixelsF[i++] = ip.getPixelValue(x, y);
 
-				img.add( pixelsF );
+				img.add(pixelsF);
 			}
 		}
 
-		final FloatImagePlus< net.imglib2.type.numeric.real.FloatType > i = createImgLib2( img, w, h );
+		final FloatImagePlus<net.imglib2.type.numeric.real.FloatType> i = createImgLib2(img, w, h);
 
-		if ( Double.isNaN( min ) || Double.isNaN( max ) || Double.isInfinite( min ) || Double.isInfinite( max ) || min == max )
-			FusionHelper.normalizeImage( i );
+		if (Double.isNaN(min) || Double.isNaN(max) || Double.isInfinite(min) || Double.isInfinite(max) || min == max)
+			FusionHelper.normalizeImage(i);
 		else
-			FusionHelper.normalizeImage( i, (float)min, (float)max );
+			FusionHelper.normalizeImage(i, (float) min, (float) max);
 
 		return i;
 	}
 
-	public static FloatImagePlus< net.imglib2.type.numeric.real.FloatType > createImgLib2( final List< float[] > img, final int w, final int h )
-	{
+	public static FloatImagePlus<net.imglib2.type.numeric.real.FloatType> createImgLib2(final List<float[]> img,
+			final int w, final int h) {
 		final ImagePlus imp;
 
-		if ( img.size() > 1 )
-		{
-			final ImageStack stack = new ImageStack( w, h );
-			for ( int z = 0; z < img.size(); ++z )
-				stack.addSlice( new FloatProcessor( w, h, img.get( z ) ) );
-			imp = new ImagePlus( "ImgLib2 FloatImagePlus (3d)", stack );
-		}
-		else
-		{
-			imp = new ImagePlus( "ImgLib2 FloatImagePlus (2d)", new FloatProcessor( w, h, img.get( 0 ) ) );
+		if (img.size() > 1) {
+			final ImageStack stack = new ImageStack(w, h);
+			for (int z = 0; z < img.size(); ++z)
+				stack.addSlice(new FloatProcessor(w, h, img.get(z)));
+			imp = new ImagePlus("ImgLib2 FloatImagePlus (3d)", stack);
+		} else {
+			imp = new ImagePlus("ImgLib2 FloatImagePlus (2d)", new FloatProcessor(w, h, img.get(0)));
 		}
 
-		return ImagePlusAdapter.wrapFloat( imp );
+		return ImagePlusAdapter.wrapFloat(imp);
 	}
 
 	/**
 	 * Instantiates the panel for adjusting the paramters
 	 */
-	
-	private boolean Dialogue() {
-	  GenericDialog gd = new GenericDialog("DoG for Stack");
-	    if (stacksize > 1) {
-	    	gd.addNumericField("First_slice:", slice1, 0);
-          gd.addNumericField("Last_slice:", slice2, 0);
-          gd.addCheckbox("Compute Maxima for all stack", propagate);
-          slice1 = (int) gd.getNextNumber();
-          slice2 = (int) gd.getNextNumber();
-          propagate = gd.getNextBoolean();
-          gd.showDialog();
-	    }
-	    return !gd.wasCanceled();
-	}
-	    
-	protected void displaySliders()
-	{
+
+	protected void displaySliders() {
 		final Frame frame = new Frame("Adjust Difference-of-Gaussian Values");
-		frame.setSize( 400, 400 );
+		frame.setSize(500, 500);
 
 		/* Instantiation */
 		final GridBagLayout layout = new GridBagLayout();
 		final GridBagConstraints c = new GridBagConstraints();
 
-		final Scrollbar sigma1 = new Scrollbar ( Scrollbar.HORIZONTAL, sigmaInit, 10, 0, 10 + scrollbarSize );		
-	    this.sigma = computeValueFromScrollbarPosition( sigmaInit, sigmaMin, sigmaMax, scrollbarSize); 
-	    
-	    final Scrollbar threshold = new Scrollbar ( Scrollbar.HORIZONTAL, thresholdInit, 10, 0, 10 + scrollbarSize );
-	    final float log1001 = (float)Math.log10( scrollbarSize + 1);
-	    
-	    this.threshold = thresholdMin + ( (log1001 - (float)Math.log10(1001-thresholdInit))/log1001 ) * (thresholdMax-thresholdMin);
-	    
-	    this.sigma2 = computeSigma2( this.sigma, this.sensitivity );
-	    final int sigma2init = computeScrollbarPositionFromValue( this.sigma2, sigmaMin, sigmaMax, scrollbarSize ); 
-		final Scrollbar sigma2 = new Scrollbar ( Scrollbar.HORIZONTAL, sigma2init, 10, 0, 10 + scrollbarSize );
-		
-	    final Label sigmaText1 = new Label( "Sigma 1 = " + this.sigma, Label.CENTER );
-	    final Label sigmaText2 = new Label( "Sigma 2 = " + this.sigma2, Label.CENTER );
-	    	    
-	    final Label thresholdText = new Label( "Threshold = " + this.threshold, Label.CENTER );
-	  
-	    
-	    final Button button = new Button( "Done" );
-	    final Button cancel = new Button( "Cancel" );
-	    final Button snakes = new Button( "Apply snakes to Roi's" );
-	    
-	    final Checkbox sigma2Enable = new Checkbox( "Enable Manual Adjustment of Sigma 2 ", enableSigma2 );
-	    final Checkbox min = new Checkbox( "Look for Minima (red)", lookForMinima );
-	    final Checkbox max = new Checkbox( "Look for Maxima (green)", lookForMaxima );
-	    
-	    /* Location */
-	    frame.setLayout( layout );
-	    
-	    c.fill = GridBagConstraints.HORIZONTAL;
+		final Scrollbar sigma1 = new Scrollbar(Scrollbar.HORIZONTAL, sigmaInit, 10, 0, 10 + scrollbarSize);
+		this.sigma = computeValueFromScrollbarPosition(sigmaInit, sigmaMin, sigmaMax, scrollbarSize);
+
+		final Scrollbar threshold = new Scrollbar(Scrollbar.HORIZONTAL, thresholdInit, 10, 0, 10 + scrollbarSize);
+		final float log1001 = (float) Math.log10(scrollbarSize + 1);
+
+		this.threshold = thresholdMin
+				+ ((log1001 - (float) Math.log10(1001 - thresholdInit)) / log1001) * (thresholdMax - thresholdMin);
+
+		this.sigma2 = computeSigma2(this.sigma, this.sensitivity);
+		final int sigma2init = computeScrollbarPositionFromValue(this.sigma2, sigmaMin, sigmaMax, scrollbarSize);
+		final Scrollbar sigma2 = new Scrollbar(Scrollbar.HORIZONTAL, sigma2init, 10, 0, 10 + scrollbarSize);
+
+		final Label sigmaText1 = new Label("Sigma 1 = " + this.sigma, Label.CENTER);
+		final Label sigmaText2 = new Label("Sigma 2 = " + this.sigma2, Label.CENTER);
+
+		final Label thresholdText = new Label("Threshold = " + this.threshold, Label.CENTER);
+
+		final Button button = new Button("Done");
+		final Button cancel = new Button("Cancel");
+		final Button snakes = new Button("Apply snakes to Roi's");
+		final Button AutoDog = new Button("Find Maxima in current Frame");
+		final Button moveNextListener = new Button("Move to next frame");
+		final Button OverstackManual = new Button("Manually select parameters for each frame");
+		final Checkbox sigma2Enable = new Checkbox("Enable Manual Adjustment of Sigma 2 ", enableSigma2);
+		final Checkbox min = new Checkbox("Look for Minima (red)", lookForMinima);
+		final Checkbox max = new Checkbox("Look for Maxima (green)", lookForMaxima);
+
+		/* Location */
+		frame.setLayout(layout);
+
+		c.fill = GridBagConstraints.HORIZONTAL;
 		c.gridx = 0;
 		c.gridy = 0;
 		c.weightx = 1;
-	    frame.add ( sigma1, c );
+		frame.add(sigma1, c);
 
-	    ++c.gridy;
-	    frame.add( sigmaText1, c );
-
-	    ++c.gridy;
-	    frame.add ( sigma2, c );
-
-	    ++c.gridy;
-	    frame.add( sigmaText2, c );
-	    
-	    ++c.gridy;
-	    c.insets = new Insets(0,65,0,65);
-	    frame.add( sigma2Enable, c );
-	    
 		++c.gridy;
-	    c.insets = new Insets(10,0,0,0);
-	    frame.add ( threshold, c );
-	    c.insets = new Insets(0,0,0,0);
+		frame.add(sigmaText1, c);
 
-	    ++c.gridy;
-	    frame.add( thresholdText, c );
+		++c.gridy;
+		frame.add(sigma2, c);
 
-	    ++c.gridy;
-	    c.insets = new Insets(0,130,0,75);
-	    frame.add( min, c );
+		++c.gridy;
+		frame.add(sigmaText2, c);
 
-	    ++c.gridy;
-	    c.insets = new Insets(0,125,0,75);
-	    frame.add( max, c );
+		++c.gridy;
+		c.insets = new Insets(0, 65, 0, 65);
+		frame.add(sigma2Enable, c);
 
-	   
-	    
-	    ++c.gridy;
-	    c.insets = new Insets(10,75,10,75);
-	    frame.add( snakes, c );
-	    
-	    
-	    ++c.gridy;
-	    c.insets = new Insets(10,150,0,150);
-	    frame.add( button, c );
+		++c.gridy;
+		c.insets = new Insets(10, 0, 0, 0);
+		frame.add(threshold, c);
+		c.insets = new Insets(0, 0, 0, 0);
 
-	    ++c.gridy;
-	    c.insets = new Insets(10,150,0,150);
-	    frame.add( cancel, c );
+		++c.gridy;
+		frame.add(thresholdText, c);
 
-	    /* Configuration */
-	    sigma1.addAdjustmentListener( new SigmaListener( sigmaText1, sigmaMin, sigmaMax, scrollbarSize, sigma1, sigma2, sigmaText2 ) );
-	    sigma2.addAdjustmentListener( new Sigma2Listener( sigmaMin, sigmaMax, scrollbarSize, sigma2, sigmaText2 ) );
-	    threshold.addAdjustmentListener( new ThresholdListener( thresholdText, thresholdMin, thresholdMax ) );
-	    button.addActionListener( new FinishedButtonListener( frame, false ) );
-	    cancel.addActionListener( new FinishedButtonListener( frame, true ) );
+		++c.gridy;
+		c.insets = new Insets(0, 130, 0, 75);
+		frame.add(min, c);
+
+		++c.gridy;
+		c.insets = new Insets(0, 125, 0, 75);
+		frame.add(max, c);
+		
+		++c.gridy;
+		c.insets = new Insets(10, 75, 10, 75);
+		frame.add(moveNextListener, c);
+		++c.gridy;
+		c.insets = new Insets(20, 75, 20, 75);
+		frame.add(AutoDog, c);
+
+		++c.gridy;
+		c.insets = new Insets(10, 100, 10, 100);
+		frame.add(snakes, c);
+
+		
+
+		++c.gridy;
+		c.insets = new Insets(10, 150, 0, 150);
+		frame.add(button, c);
+
+		++c.gridy;
+		c.insets = new Insets(10, 150, 0, 150);
+		frame.add(cancel, c);
+
+		/* Configuration */
+		sigma1.addAdjustmentListener(
+				new SigmaListener(sigmaText1, sigmaMin, sigmaMax, scrollbarSize, sigma1, sigma2, sigmaText2));
+		sigma2.addAdjustmentListener(new Sigma2Listener(sigmaMin, sigmaMax, scrollbarSize, sigma2, sigmaText2));
+		threshold.addAdjustmentListener(new ThresholdListener(thresholdText, thresholdMin, thresholdMax));
+		button.addActionListener(new FinishedButtonListener(frame, false));
+		cancel.addActionListener(new FinishedButtonListener(frame, true));
 		snakes.addActionListener(new snakeButtonListener());
-		min.addItemListener( new MinListener() );
-		max.addItemListener( new MaxListener() );
-		sigma2Enable.addItemListener( new EnableListener( sigma2, sigmaText2 ) );
-		
-		if ( !sigma2IsAdjustable )
-			sigma2Enable.setEnabled( false );
-		
-	    frame.addWindowListener( new FrameListener( frame ) );
-		
-		frame.setVisible( true );
-		
+		AutoDog.addActionListener(new AutoDoGButtonListener());
+		moveNextListener.addActionListener(new moveNextListener());
+		min.addItemListener(new MinListener());
+		max.addItemListener(new MaxListener());
+		sigma2Enable.addItemListener(new EnableListener(sigma2, sigmaText2));
+
+		if (!sigma2IsAdjustable)
+			sigma2Enable.setEnabled(false);
+
+		frame.addWindowListener(new FrameListener(frame));
+
+		frame.setVisible(true);
+
 		originalColor = sigma2.getBackground();
-		sigma2.setBackground( inactiveColor );
-	    sigmaText1.setFont( sigmaText1.getFont().deriveFont( Font.BOLD ) );
-	    thresholdText.setFont( thresholdText.getFont().deriveFont( Font.BOLD ) );
+		sigma2.setBackground(inactiveColor);
+		sigmaText1.setFont(sigmaText1.getFont().deriveFont(Font.BOLD));
+		thresholdText.setFont(thresholdText.getFont().deriveFont(Font.BOLD));
 	}
 
-	protected class EnableListener implements ItemListener
-	{
+	protected class EnableListener implements ItemListener {
 		final Scrollbar sigma2;
 		final Label sigmaText2;
-		
-		public EnableListener( final Scrollbar sigma2, final Label sigmaText2 )
-		{
+
+		public EnableListener(final Scrollbar sigma2, final Label sigmaText2) {
 			this.sigmaText2 = sigmaText2;
 			this.sigma2 = sigma2;
 		}
-		
+
 		@Override
-		public void itemStateChanged( final ItemEvent arg0 )
-		{
-			if ( arg0.getStateChange() == ItemEvent.DESELECTED )
-			{
-				sigmaText2.setFont( sigmaText2.getFont().deriveFont( Font.PLAIN ) );
-				sigma2.setBackground( inactiveColor );
+		public void itemStateChanged(final ItemEvent arg0) {
+			if (arg0.getStateChange() == ItemEvent.DESELECTED) {
+				sigmaText2.setFont(sigmaText2.getFont().deriveFont(Font.PLAIN));
+				sigma2.setBackground(inactiveColor);
 				enableSigma2 = false;
-			}
-			else if ( arg0.getStateChange() == ItemEvent.SELECTED  )
-			{
-				sigmaText2.setFont( sigmaText2.getFont().deriveFont( Font.BOLD ) );
-				sigma2.setBackground( originalColor );
+			} else if (arg0.getStateChange() == ItemEvent.SELECTED) {
+				sigmaText2.setFont(sigmaText2.getFont().deriveFont(Font.BOLD));
+				sigma2.setBackground(originalColor);
 				enableSigma2 = true;
 			}
 		}
 	}
-	
-	protected class MinListener implements ItemListener
-	{
+
+	protected class MinListener implements ItemListener {
 		@Override
-		public void itemStateChanged( final ItemEvent arg0 )
-		{
+		public void itemStateChanged(final ItemEvent arg0) {
 			boolean oldState = lookForMinima;
-			
-			if ( arg0.getStateChange() == ItemEvent.DESELECTED )				
-				lookForMinima = false;			
-			else if ( arg0.getStateChange() == ItemEvent.SELECTED  )
+
+			if (arg0.getStateChange() == ItemEvent.DESELECTED)
+				lookForMinima = false;
+			else if (arg0.getStateChange() == ItemEvent.SELECTED)
 				lookForMinima = true;
-			
-			if ( lookForMinima != oldState )
-			{
-				while ( isComputing )
-					SimpleMultiThreading.threadWait( 10 );
-				
-				updatePreview( ValueChange.MINMAX );
+
+			if (lookForMinima != oldState) {
+				while (isComputing)
+					SimpleMultiThreading.threadWait(10);
+
+				updatePreview(ValueChange.MINMAX);
 			}
 		}
 	}
 
-	protected class MaxListener implements ItemListener
-	{
+	protected class MaxListener implements ItemListener {
 		@Override
-		public void itemStateChanged( final ItemEvent arg0 )
-		{
+		public void itemStateChanged(final ItemEvent arg0) {
 			boolean oldState = lookForMaxima;
-			
-			if ( arg0.getStateChange() == ItemEvent.DESELECTED )				
-				lookForMaxima = false;			
-			else if ( arg0.getStateChange() == ItemEvent.SELECTED  )
+
+			if (arg0.getStateChange() == ItemEvent.DESELECTED)
+				lookForMaxima = false;
+			else if (arg0.getStateChange() == ItemEvent.SELECTED)
 				lookForMaxima = true;
-			
-			if ( lookForMaxima != oldState )
-			{
-				while ( isComputing )
-					SimpleMultiThreading.threadWait( 10 );
-				
-				updatePreview( ValueChange.MINMAX );
+
+			if (lookForMaxima != oldState) {
+				while (isComputing)
+					SimpleMultiThreading.threadWait(10);
+
+				updatePreview(ValueChange.MINMAX);
 			}
 		}
 	}
 
 	/**
-	 * Tests whether the ROI was changed and will recompute the preview 
+	 * Tests whether the ROI was changed and will recompute the preview
 	 * 
 	 * @author Stephan Preibisch
 	 */
-	protected class RoiListener implements MouseListener
-	{
+	protected class RoiListener implements MouseListener {
 		@Override
-		public void mouseClicked(MouseEvent e) {}
+		public void mouseClicked(MouseEvent e) {
+		}
 
 		@Override
-		public void mouseEntered(MouseEvent e) {}
+		public void mouseEntered(MouseEvent e) {
+		}
 
 		@Override
-		public void mouseExited(MouseEvent e) {}
+		public void mouseExited(MouseEvent e) {
+		}
 
 		@Override
-		public void mousePressed(MouseEvent e) {}
+		public void mousePressed(MouseEvent e) {
+		}
 
 		@Override
-		public void mouseReleased( final MouseEvent e )
-		{
+		public void mouseReleased(final MouseEvent e) {
 			// here the ROI might have been modified, let's test for that
 			final Roi roi = imp.getRoi();
-			
-			if ( roi == null || roi.getType() != Roi.RECTANGLE )
+
+			if (roi == null || roi.getType() != Roi.RECTANGLE)
 				return;
-			
-			while ( isComputing )
-				SimpleMultiThreading.threadWait( 10 );
-			
-			updatePreview( ValueChange.ROI );				
+
+			while (isComputing)
+				SimpleMultiThreading.threadWait(10);
+
+			updatePreview(ValueChange.ROI);
 		}
-		
+
 	}
 
-	protected class ApplyButtonListener implements ActionListener
-	{
+	protected class ApplyButtonListener implements ActionListener {
 		@Override
-		public void actionPerformed( final ActionEvent arg0 ) 
-		{
+		public void actionPerformed(final ActionEvent arg0) {
 			ImagePlus imp;
 
-			try
-			{
+			try {
 				imp = source.getImagePlus();
-			}
-			catch (ImgLibException e)
-			{
+			} catch (ImgLibException e) {
 				imp = null;
 				e.printStackTrace();
 			}
 
 			// convert ImgLib2 image to ImgLib1 image via the imageplus
-			final Image< FloatType > source = ImageJFunctions.wrapFloat( imp );
+			final Image<FloatType> source = ImageJFunctions.wrapFloat(imp);
 
-			
-			IOFunctions.println( "Computing DoG ... " );
+			IOFunctions.println("Computing DoG ... ");
 
 			// test the parameters on the complete stack
-			final ArrayList<DifferenceOfGaussianPeak<FloatType>> peaks = 
-				DetectionSegmentation.extractBeadsLaPlaceImgLib( 
-			                                				source, 
-			                                				new OutOfBoundsStrategyMirrorFactory<FloatType>(), 
-			                                				imageSigma, 
-			                                				sigma,
-			                                				sigma2,
-			                                				threshold, 
-			                                				threshold/4, 
-			                                				lookForMaxima,
-			                                				lookForMinima,
-			                                				ViewStructure.DEBUG_MAIN );
+			final ArrayList<DifferenceOfGaussianPeak<FloatType>> peaks = DetectionSegmentation
+					.extractBeadsLaPlaceImgLib(source, new OutOfBoundsStrategyMirrorFactory<FloatType>(), imageSigma,
+							sigma, sigma2, threshold, threshold / 4, lookForMaxima, lookForMinima,
+							ViewStructure.DEBUG_MAIN);
 
-			IOFunctions.println( "Drawing DoG result ... " );
+			IOFunctions.println("Drawing DoG result ... ");
 
 			// display as extra image
 			Image<FloatType> detections = source.createNewImage();
 			final LocalizableByDimCursor<FloatType> c = detections.createLocalizableByDimCursor();
-			
-			for ( final DifferenceOfGaussianPeak<FloatType> peak : peaks )
-			{
-				final LocalizablePoint p = new LocalizablePoint( new float[]{ peak.getSubPixelPosition( 0 ), peak.getSubPixelPosition( 1 )} );
-				
-				c.setPosition( p );
-				c.getType().set( 1 );
+
+			for (final DifferenceOfGaussianPeak<FloatType> peak : peaks) {
+				final LocalizablePoint p = new LocalizablePoint(
+						new float[] { peak.getSubPixelPosition(0), peak.getSubPixelPosition(1) });
+
+				c.setPosition(p);
+				c.getType().set(1);
 			}
 
-			IOFunctions.println( "Convolving DoG result ... " );
+			IOFunctions.println("Convolving DoG result ... ");
 
-			final GaussianConvolutionReal<FloatType> gauss = new GaussianConvolutionReal<FloatType>( detections, new OutOfBoundsStrategyValueFactory<FloatType>(), 2 );
+			final GaussianConvolutionReal<FloatType> gauss = new GaussianConvolutionReal<FloatType>(detections,
+					new OutOfBoundsStrategyValueFactory<FloatType>(), 2);
 			gauss.process();
 
 			detections = gauss.getResult();
 
-			IOFunctions.println( "Showing DoG result ... " );
+			IOFunctions.println("Showing DoG result ... ");
 
-			ImageJFunctions.show( detections );
+			ImageJFunctions.show(detections);
 		}
 	}
 
-	
-	
-	
-	
-	protected class FinishedButtonListener implements ActionListener
-	{
+	protected class FinishedButtonListener implements ActionListener {
 		final Frame parent;
 		final boolean cancel;
-		
-		public FinishedButtonListener( Frame parent, final boolean cancel )
-		{
+
+		public FinishedButtonListener(Frame parent, final boolean cancel) {
 			this.parent = parent;
 			this.cancel = cancel;
 		}
-		
+
 		@Override
-		public void actionPerformed( final ActionEvent arg0 ) 
-		{
+		public void actionPerformed(final ActionEvent arg0) {
 			wasCanceled = cancel;
-			close( parent, sliceObserver, imp, roiListener );
+			close(parent, sliceObserver, imp, roiListener);
 		}
 	}
-	
-	protected class FrameListener extends WindowAdapter
-	{
+
+	protected class FrameListener extends WindowAdapter {
 		final Frame parent;
-		
-		public FrameListener( Frame parent )
-		{
+
+		public FrameListener(Frame parent) {
 			super();
 			this.parent = parent;
 		}
-		
+
 		@Override
-        public void windowClosing (WindowEvent e) 
-		{ 
-			close( parent, sliceObserver, imp, roiListener );
+		public void windowClosing(WindowEvent e) {
+			close(parent, sliceObserver, imp, roiListener);
 		}
 	}
-	
-	protected final void close( final Frame parent, final SliceObserver sliceObserver, final ImagePlus imp, final RoiListener roiListener )
-	{
-		if ( parent != null )
+
+	protected final void close(final Frame parent, final SliceObserver sliceObserver, final ImagePlus imp,
+			final RoiListener roiListener) {
+		if (parent != null)
 			parent.dispose();
-		
-		if ( sliceObserver != null )
+
+		if (sliceObserver != null)
 			sliceObserver.unregister();
-		
-		if ( imp != null )
-		{
-			if ( roiListener != null )
-				imp.getCanvas().removeMouseListener( roiListener );
-			
+
+		if (imp != null) {
+			if (roiListener != null)
+				imp.getCanvas().removeMouseListener(roiListener);
+
 			imp.getOverlay().clear();
 			imp.updateAndDraw();
 		}
-		
+
 		isFinished = true;
 	}
 
-	protected class Sigma2Listener implements AdjustmentListener
-	{
+	protected class Sigma2Listener implements AdjustmentListener {
 		final float min, max;
 		final int scrollbarSize;
-		
+
 		final Scrollbar sigmaScrollbar2;
 		final Label sigma2Label;
-		
-		public Sigma2Listener( final float min, final float max, final int scrollbarSize, final Scrollbar sigmaScrollbar2, final Label sigma2Label )
-		{
+
+		public Sigma2Listener(final float min, final float max, final int scrollbarSize,
+				final Scrollbar sigmaScrollbar2, final Label sigma2Label) {
 			this.min = min;
 			this.max = max;
 			this.scrollbarSize = scrollbarSize;
-			
+
 			this.sigmaScrollbar2 = sigmaScrollbar2;
 			this.sigma2Label = sigma2Label;
 		}
-		
+
 		@Override
-		public void adjustmentValueChanged( final AdjustmentEvent event )
-		{
-			if ( enableSigma2 )
-			{
-				sigma2 = computeValueFromScrollbarPosition( event.getValue(), min, max, scrollbarSize );
-				
-				if ( sigma2 < sigma )
-				{
+		public void adjustmentValueChanged(final AdjustmentEvent event) {
+			if (enableSigma2) {
+				sigma2 = computeValueFromScrollbarPosition(event.getValue(), min, max, scrollbarSize);
+
+				if (sigma2 < sigma) {
 					sigma2 = sigma + 0.001f;
-					sigmaScrollbar2.setValue( computeScrollbarPositionFromValue( sigma2, min, max, scrollbarSize ) );
+					sigmaScrollbar2.setValue(computeScrollbarPositionFromValue(sigma2, min, max, scrollbarSize));
 				}
-				
-				sigma2Label.setText( "Sigma 2 = " + sigma2 );
-				
-				if ( !event.getValueIsAdjusting() )
-				{
-					while ( isComputing )
-					{
-						SimpleMultiThreading.threadWait( 10 );
+
+				sigma2Label.setText("Sigma 2 = " + sigma2);
+
+				if (!event.getValueIsAdjusting()) {
+					while (isComputing) {
+						SimpleMultiThreading.threadWait(10);
 					}
-					updatePreview( ValueChange.SIGMA );
+					updatePreview(ValueChange.SIGMA);
 				}
-				
-			}
-			else
-			{
+
+			} else {
 				// if no manual adjustment simply reset it
-				sigmaScrollbar2.setValue( computeScrollbarPositionFromValue( sigma2, min, max, scrollbarSize ) );
+				sigmaScrollbar2.setValue(computeScrollbarPositionFromValue(sigma2, min, max, scrollbarSize));
 			}
-		}		
+		}
 	}
 
-	protected class SigmaListener implements AdjustmentListener
-	{
+	protected class SigmaListener implements AdjustmentListener {
 		final Label label;
 		final float min, max;
 		final int scrollbarSize;
-		
+
 		final Scrollbar sigmaScrollbar1;
-		final Scrollbar sigmaScrollbar2;		
+		final Scrollbar sigmaScrollbar2;
 		final Label sigmaText2;
-		
-		public SigmaListener( final Label label, final float min, final float max, final int scrollbarSize, final Scrollbar sigmaScrollbar1,  final Scrollbar sigmaScrollbar2, final Label sigmaText2  )
-		{
+
+		public SigmaListener(final Label label, final float min, final float max, final int scrollbarSize,
+				final Scrollbar sigmaScrollbar1, final Scrollbar sigmaScrollbar2, final Label sigmaText2) {
 			this.label = label;
 			this.min = min;
 			this.max = max;
 			this.scrollbarSize = scrollbarSize;
-			
+
 			this.sigmaScrollbar1 = sigmaScrollbar1;
 			this.sigmaScrollbar2 = sigmaScrollbar2;
 			this.sigmaText2 = sigmaText2;
 		}
-		
+
 		@Override
-		public void adjustmentValueChanged( final AdjustmentEvent event )
-		{
-			sigma = computeValueFromScrollbarPosition( event.getValue(), min, max, scrollbarSize );			
-			
-			if ( !enableSigma2 )
-			{
-				sigma2 = computeSigma2( sigma, sensitivity );
-				sigmaText2.setText( "Sigma 2 = " + sigma2 );			    
-				sigmaScrollbar2.setValue( computeScrollbarPositionFromValue( sigma2, min, max, scrollbarSize ) );
-			}
-			else if ( sigma > sigma2 )
-			{
+		public void adjustmentValueChanged(final AdjustmentEvent event) {
+			sigma = computeValueFromScrollbarPosition(event.getValue(), min, max, scrollbarSize);
+
+			if (!enableSigma2) {
+				sigma2 = computeSigma2(sigma, sensitivity);
+				sigmaText2.setText("Sigma 2 = " + sigma2);
+				sigmaScrollbar2.setValue(computeScrollbarPositionFromValue(sigma2, min, max, scrollbarSize));
+			} else if (sigma > sigma2) {
 				sigma = sigma2 - 0.001f;
-				sigmaScrollbar1.setValue( computeScrollbarPositionFromValue( sigma, min, max, scrollbarSize ) );
+				sigmaScrollbar1.setValue(computeScrollbarPositionFromValue(sigma, min, max, scrollbarSize));
 			}
-			
-			label.setText( "Sigma 1 = " + sigma );
 
-			//if ( !event.getValueIsAdjusting() )
+			label.setText("Sigma 1 = " + sigma);
+
+			// if ( !event.getValueIsAdjusting() )
 			{
-				while ( isComputing )
-				{
-					SimpleMultiThreading.threadWait( 10 );
+				while (isComputing) {
+					SimpleMultiThreading.threadWait(10);
 				}
-				updatePreview( ValueChange.SIGMA );
+				updatePreview(ValueChange.SIGMA);
 			}
-		}		
+		}
 	}
 
-	protected static float computeValueFromScrollbarPosition( final int scrollbarPosition, final float min, final float max, final int scrollbarSize )
-	{
-		return min + (scrollbarPosition/(float)scrollbarSize) * (max-min);
+	protected static float computeValueFromScrollbarPosition(final int scrollbarPosition, final float min,
+			final float max, final int scrollbarSize) {
+		return min + (scrollbarPosition / (float) scrollbarSize) * (max - min);
 	}
 
-	protected static int computeScrollbarPositionFromValue( final float sigma, final float min, final float max, final int scrollbarSize )
-	{
-		return Util.round( ((sigma - min)/(max-min)) * scrollbarSize );
+	protected static int computeScrollbarPositionFromValue(final float sigma, final float min, final float max,
+			final int scrollbarSize) {
+		return Util.round(((sigma - min) / (max - min)) * scrollbarSize);
 	}
 
-	protected class ThresholdListener implements AdjustmentListener
-	{
+	protected class ThresholdListener implements AdjustmentListener {
 		final Label label;
 		final float min, max;
-		final float log1001 = (float)Math.log10(1001);
-		
-		public ThresholdListener( final Label label, final float min, final float max )
-		{
+		final float log1001 = (float) Math.log10(1001);
+
+		public ThresholdListener(final Label label, final float min, final float max) {
 			this.label = label;
 			this.min = min;
 			this.max = max;
 		}
-		
-		@Override
-		public void adjustmentValueChanged( final AdjustmentEvent event )
-		{			
-			threshold = min + ( (log1001 - (float)Math.log10(1001-event.getValue()))/log1001 ) * (max-min);
-			label.setText( "Threshold = " + threshold );
 
-			if ( !isComputing )
-			{
-				updatePreview( ValueChange.THRESHOLD );
-			}
-			else if ( !event.getValueIsAdjusting() )
-			{
-				while ( isComputing )
-				{
-					SimpleMultiThreading.threadWait( 10 );
+		@Override
+		public void adjustmentValueChanged(final AdjustmentEvent event) {
+			threshold = min + ((log1001 - (float) Math.log10(1001 - event.getValue())) / log1001) * (max - min);
+			label.setText("Threshold = " + threshold);
+
+			if (!isComputing) {
+				updatePreview(ValueChange.THRESHOLD);
+			} else if (!event.getValueIsAdjusting()) {
+				while (isComputing) {
+					SimpleMultiThreading.threadWait(10);
 				}
-				updatePreview( ValueChange.THRESHOLD );
+				updatePreview(ValueChange.THRESHOLD);
 			}
-		}		
+		}
 	}
 
-	protected class ImagePlusListener implements SliceListener
-	{
+	protected class ImagePlusListener implements SliceListener {
 		@Override
-		public void sliceChanged(ImagePlus arg0)
-		{
-			if ( isStarted )
-			{
-				while ( isComputing )
-				{
-					SimpleMultiThreading.threadWait( 10 );
+		public void sliceChanged(ImagePlus arg0) {
+			if (isStarted) {
+				while (isComputing) {
+					SimpleMultiThreading.threadWait(10);
 				}
-				updatePreview( ValueChange.SLICE );
-				
-				
+				updatePreview(ValueChange.SLICE);
+
 			}
-		}		
+		}
 	}
-	
-	public static void main( String[] args )
-	{
+
+	public static void main(String[] args) {
 		new ImageJ();
-		
-		ImagePlus imp = new Opener().openImage( "/Users/varunkapoor/res/mCherry-test.tif" );
+
+		ImagePlus imp = new Opener().openImage("/Users/varunkapoor/res/mCherry-test.tif");
 		imp.show();
-		
+
 		// Convert the image to 8-bit or 16-bit, very crucial for snakes
 		IJ.run("16-bit");
 		final ImagePlus currentimp = IJ.getImage();
-		
-			
-		currentimp.setRoi( currentimp.getWidth()/4, currentimp.getHeight()/4, 
-				currentimp.getWidth()/2, currentimp.getHeight()/2 );		
-		
-		//new InteractiveActiveContour(currentimp).run(currentimp.getProcessor());
-		
-		new InteractiveActiveContour(currentimp).run( null ); 
-		
-			
+
+		currentimp.setRoi(currentimp.getWidth() / 4, currentimp.getHeight() / 4, currentimp.getWidth() / 2,
+				currentimp.getHeight() / 2);
+
+		// new
+		// InteractiveActiveContour(currentimp).run(currentimp.getProcessor());
+
+		new InteractiveActiveContour(currentimp).run(null);
+
 	}
 }
-

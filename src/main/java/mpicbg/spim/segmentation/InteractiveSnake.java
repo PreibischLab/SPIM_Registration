@@ -83,7 +83,7 @@ import java.awt.*;
       // step to display snake
       int step = 100;
       // threshold of edges
-      int seuil = 5;
+      int seuil = 10;
       // how far to look for edges
       int DistMAX = Prefs.getInt("ABSnake_DistSearch.int", 20);
       // maximum displacement
@@ -247,12 +247,17 @@ import java.awt.*;
               }
 
 
-              new ImagePlus("Snake Result", pile_resultat).show();
+            //  new ImagePlus("Snake Result" , pile_resultat).show();
               if (createsegimage) {
                   new ImagePlus("Seg", pile_seg).show();
               }
           }// dialog
           System.gc();
+      }
+      
+      public ImageStack getResult(){
+    	  
+    	  return pile_resultat;
       }
 
       /**
