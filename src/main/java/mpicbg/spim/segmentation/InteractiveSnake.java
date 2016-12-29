@@ -65,7 +65,7 @@ import java.util.concurrent.atomic.AtomicInteger;
       int nbRois;
       Roi rorig = null;
       Roi processRoi = null;
-      Color colorDraw = null;
+      Color colorDraw = Color.RED;
      ArrayList<SnakeObject> snakeList;
       int channel;
       int Frame;
@@ -102,9 +102,9 @@ import java.util.concurrent.atomic.AtomicInteger;
       // how far to look for edges
       int DistMAX = Prefs.getInt("ABSnake_DistSearch.int", 50);
       // maximum displacement
-      double force = 5.0;
+      double force = 2.5;
       // regularization factors, min and max
-      double reg = 5.0;
+      double reg = 10.5;
       double regmin, regmax;
       // first and last slice to process
       int slice1, slice2;
@@ -113,8 +113,9 @@ import java.util.concurrent.atomic.AtomicInteger;
       boolean createsegimage = false;
       boolean advanced = false;
       boolean propagate = true;
+      boolean Auto = false;
       boolean movie = false;
-      boolean saverois = true;
+      boolean saverois = false;
       boolean saveIntensity = true;
       boolean useroinames = false;
       boolean nosizelessrois = true;
@@ -144,8 +145,14 @@ import java.util.concurrent.atomic.AtomicInteger;
           Calibration cal = imp.getCalibration();
           double resXY = cal.pixelWidth;
             double Inten =   cal.pixelDepth;
-          boolean dialog = Dialogue();
-
+          
+            
+            boolean dialog;
+           	
+            if (Auto)
+            	dialog = false;
+            else
+                dialog = Dialogue();
           // many rois
           RoiManager roimanager = RoiManager.getInstance();
           if (roimanager == null) {
@@ -165,7 +172,10 @@ import java.util.concurrent.atomic.AtomicInteger;
           Roi[] RoisResult = new Roi[nbRois];
           System.arraycopy(RoisOrig, 0, RoisCurrent, 0, nbRois);
 
-          if (dialog) {
+          
+          
+          
+         
               configDriver = new SnakeConfigDriver();
               AdvancedParameters();
               
@@ -200,19 +210,18 @@ import java.util.concurrent.atomic.AtomicInteger;
               for (int z = slice1; z != (slice2 + sens); z += sens) {
                   ColorProcessor imageDraw = (ColorProcessor) (pile_resultat.getProcessor(z).duplicate());
                   image = (ColorProcessor) (pile_resultat.getProcessor(z).duplicate());
-                  plus = new ImagePlus("Roi " + z, image);
+                  plus = new ImagePlus("Running snakes in current Frame ", image);
+                 
                   for (int i = 0; i < RoisOrig.length; i++) {
                       if (createsegimage) {
                           seg = new ByteProcessor(pile_seg.getWidth(), pile_seg.getHeight());
                       }
                       if (propagate) {
-                          // imp.setRoi(RoisCurrent[i]);
                           roi = RoisCurrent[i];
                       } else {
-                          // imp.setRoi(RoisOrig[i]);
                           roi = RoisOrig[i];
                       }
-                      IJ.log("processing slice " + Frame + " with roi " + i);
+                      IJ.log("processing Frame no. " + Frame + " with roi " + i);
                       IJ.selectWindow("Log");
                      
                 	  IJ.saveAs("Text", usefolder + "//" + "Logsnakerun.txt");
@@ -220,7 +229,6 @@ import java.util.concurrent.atomic.AtomicInteger;
                       snake.killImages();
 
                       snake.DrawSnake(imageDraw, colorDraw, 1);
-                      //pluses[i].hide();
                       RoisResult[i] = snake.createRoi();
                       RoisResult[i].setName("res-" + i);
                       RoisCurrent[i] = snake.createRoi();
@@ -233,7 +241,7 @@ import java.util.concurrent.atomic.AtomicInteger;
                           pile_seg.addSlice("Seg " + z, seg);
                       } // segmentation
 
-                
+                     
                       
                       ColorProcessor imagep = (ColorProcessor) (pile_resultat.getProcessor(z).duplicate());
 
@@ -244,13 +252,14 @@ import java.util.concurrent.atomic.AtomicInteger;
                       snakeList.add(currentsnake);
                       }
                   }
+                  plus.hide();
               }
 
-
+              
               if (createsegimage) {
                   new ImagePlus("Seg", pile_seg).show();
               }
-          }// dialog
+       
           System.gc();
       }
       
@@ -322,6 +331,7 @@ import java.util.concurrent.atomic.AtomicInteger;
               slice2 = (int) gd.getNextNumber();
               propagate = gd.getNextBoolean();
           }
+         
           // color choice of display
           indexcol = gd.getNextChoiceIndex();
           switch (indexcol) {
@@ -352,6 +362,7 @@ import java.util.concurrent.atomic.AtomicInteger;
               default:
                   colorDraw = Color.yellow;
           }
+          
           createsegimage = gd.getNextBoolean();
           saverois = gd.getNextBoolean();
           saveIntensity = gd.getNextBoolean();
@@ -424,8 +435,7 @@ import java.util.concurrent.atomic.AtomicInteger;
           double dist0 = 0.0;
           double dist;
        
-          Roi oldRoi = snake.createRoi();
-          Roi newRoi = snake.createRoi();
+         
           for (i = 0; i < ite; i++) {
               if (IJ.escapePressed()) {
                   break;
@@ -441,42 +451,21 @@ import java.util.concurrent.atomic.AtomicInteger;
               dist0 = dist;
 
               
-              
-            if (i > 0)
-            	newRoi = snake.createRoi();
-            
-           
-            
               // display of the snake
               if ((step > 0) && ((i % step) == 0)) {
                   IJ.showStatus("Show intermediate result (iteration n" + (i + 1) + ")");
-                  ColorProcessor image2 = (ColorProcessor) (pile_resultat.getProcessor(numSlice).duplicate());
+            //      ColorProcessor image2 = (ColorProcessor) (pile_resultat.getProcessor(numSlice).duplicate());
 
-                  snake.DrawSnake(image2, colorDraw, 1);
-                  plus.setProcessor("", image2);
-                  plus.setTitle(imp.getTitle() + " roi " + numRoi + " (iteration n" + (i + 1) + ")");
-                  plus.updateAndRepaintWindow();
+              //    snake.DrawSnake(image2, colorDraw, 1);
+               //   plus.setProcessor("", image2);
+                //  plus.setTitle(imp.getTitle() + " roi " + numRoi + " (iteration n" + (i + 1) + ")");
+                 // plus.updateAndRepaintWindow();
                   if (movie) {
                       fs = new FileSaver(plus);
                       fs.saveAsTiff(usefolder + "//" + addToName + "ABsnake-r" + numRoi + "-t" + i + "-z" + numSlice + ".tif");
                   }
-                  RoiEncoder saveRoi;
-                  /*
-                  if (saveiterrois) {
-                      try {
-                          Roi roiToSave = snake.createRoi();
-                          if (nosizelessrois == false || (nosizelessrois == true && roiToSave.getFloatWidth() > 2 && roiToSave.getFloatHeight() > 2)) {
-                              saveRoi = new RoiEncoder(usefolder + "//" + addToName + "ABsnake-r" + numRoi + "-t" + i + "-z" + numSlice + ".roi");
-                              saveRoi.write(roiToSave);
-                          }
-                      } catch (IOException ex) {
-                          Logger.getLogger(InteractiveSnake.class.getName()).log(Level.SEVERE, null, ex);
-                      }
-
-                  }
-                  */
+                
               }
-              oldRoi = newRoi;
           }
           
           

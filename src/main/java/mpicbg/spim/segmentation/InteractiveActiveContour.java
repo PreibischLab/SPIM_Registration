@@ -145,6 +145,7 @@ public class InteractiveActiveContour implements PlugIn {
 	boolean sigma2IsAdjustable = true;
 	boolean propagate = true;
 	boolean lookForMinima = false;
+	boolean Auto = false;
 	boolean lookForMaxima = true;
 
 	public static enum ValueChange {
@@ -222,14 +223,17 @@ public class InteractiveActiveContour implements PlugIn {
 	public InteractiveActiveContour(final ImagePlus imp, final int channel) {
 		this.imp = imp;
 		this.channel = channel;
+		standardRectangle = new Rectangle(0, 0,  imp.getWidth() - 1,  imp.getHeight() - 1);
+
 	}
 
 	public InteractiveActiveContour(final ImagePlus imp) {
 		this.imp = imp;
+		standardRectangle = new Rectangle(0, 0,  imp.getWidth() - 1,  imp.getHeight() - 1);
+
 	}
 
-	public InteractiveActiveContour() {
-	}
+	
 
 	public void setMinIntensityImage(final double min) {
 		this.minIntensityImage = min;
@@ -251,7 +255,6 @@ public class InteractiveActiveContour implements PlugIn {
 		if (imp == null)
 			imp = WindowManager.getCurrentImage();
 
-		standardRectangle = new Rectangle(0, 0, 5 * imp.getWidth() / 6, 5 * imp.getHeight() / 6);
 
 		if (imp.getType() == ImagePlus.COLOR_RGB || imp.getType() == ImagePlus.COLOR_256) {
 			IJ.log("Color images are not supported, please convert to 8, 16 or 32-bit grayscale");
@@ -325,7 +328,6 @@ public class InteractiveActiveContour implements PlugIn {
 		// check if Roi changed
 		boolean roiChanged = false;
 		Roi roi = imp.getRoi();
-		standardRectangle = new Rectangle(0, 0, 5 * imp.getWidth() / 6, 5 * imp.getHeight() / 6);
 		if (roi == null || roi.getType() != Roi.RECTANGLE) {
 			imp.setRoi(new Rectangle(standardRectangle));
 			roi = imp.getRoi();
@@ -385,8 +387,10 @@ public class InteractiveActiveContour implements PlugIn {
 			subpixel.process();
 
 			peaks = dog.getPeaks();
+			
 		}
 
+		
 		// extract peaks to show
 		Overlay o = imp.getOverlay();
 
@@ -440,18 +444,127 @@ public class InteractiveActiveContour implements PlugIn {
 		isComputing = false;
 	}
 
+	/**
+	 * Updates the Preview with the current parameters (sigma, threshold, roi,
+	 * slicenumber)
+	 * The roi manager simply adds all the Rois with change in frame and 
+	 * not removes the previous one, use for automatic detection
+	 * @param change
+	 *            - what did change
+	 */
+
+	protected void updatePreviewNotRoi(final ValueChange change) {
+
+	
+		Roi roi = imp.getRoi();
+		
+		final Rectangle rect = roi.getBounds();
+		
+
+		// compute the Difference Of Gaussian if necessary
+		if (peaks == null || change == ValueChange.SIGMA || change == ValueChange.SLICE
+				|| change == ValueChange.ALL) {
+			//
+			// Compute the Sigmas for the gaussian folding
+			//
+
+			final float k, K_MIN1_INV;
+			final float[] sigma, sigmaDiff;
+
+			if (enableSigma2) {
+				sigma = new float[2];
+				sigma[0] = this.sigma;
+				sigma[1] = this.sigma2;
+				k = sigma[1] / sigma[0];
+				K_MIN1_INV = DetectionSegmentation.computeKWeight(k);
+				sigmaDiff = DetectionSegmentation.computeSigmaDiff(sigma, imageSigma);
+			} else {
+				k = (float) DetectionSegmentation.computeK(sensitivity);
+				K_MIN1_INV = DetectionSegmentation.computeKWeight(k);
+				sigma = DetectionSegmentation.computeSigma(k, this.sigma);
+				sigmaDiff = DetectionSegmentation.computeSigmaDiff(sigma, imageSigma);
+			}
+
+			// the upper boundary
+			this.sigma2 = sigma[1];
+
+			final DifferenceOfGaussianReal1<FloatType> dog = new DifferenceOfGaussianReal1<FloatType>(img,
+					new OutOfBoundsStrategyValueFactory<FloatType>(), sigmaDiff[0], sigmaDiff[1], thresholdMin / 4,
+					K_MIN1_INV);
+			dog.setKeepDoGImage(true);
+			dog.process();
+
+			final SubpixelLocalization<FloatType> subpixel = new SubpixelLocalization<FloatType>(dog.getDoGImage(),
+					dog.getPeaks());
+			subpixel.process();
+
+			peaks = dog.getPeaks();
+			
+		}
+
+		
+		// extract peaks to show
+		Overlay o = imp.getOverlay();
+
+		if (o == null) {
+			o = new Overlay();
+			imp.setOverlay(o);
+		}
+
+		o.clear();
+
+		 RoiManager roimanager = RoiManager.getInstance();
+
+		
+
+		for (final DifferenceOfGaussianPeak<FloatType> peak : peaks) {
+			if ((peak.isMax() && lookForMaxima) || (peak.isMin() && lookForMinima)) {
+				final float x = peak.getPosition(0);
+				final float y = peak.getPosition(1);
+				if (Math.abs(peak.getValue().get()) > threshold && x >= extraSize / 2 && y >= extraSize / 2
+						&& x < rect.width + extraSize / 2 && y < rect.height + extraSize / 2) {
+					final OvalRoi or = new OvalRoi(Util.round(x - sigma) + rect.x - extraSize / 2,
+							Util.round(y - sigma) + rect.y - extraSize / 2, Util.round(sigma + sigma2),
+							Util.round(sigma + sigma2));
+
+					if (peak.isMax())
+						or.setStrokeColor(Color.red);
+					else if (peak.isMin())
+						or.setStrokeColor(Color.green);
+
+					o.add(or);
+					roimanager.addRoi(or);
+
+				}
+
+			}
+		}
+
+		imp.updateAndDraw();
+
+		isComputing = false;
+	}
+
+	
+	
 	protected class moveNextListener implements ActionListener {
 		@Override
 		public void actionPerformed(final ActionEvent arg0) {
 
 			// add listener to the imageplus slice slider
 			sliceObserver = new SliceObserver(imp, new ImagePlusListener());
+			
+
+					
 			imp.setSlice(imp.getFrame());
-			standardRectangle = new Rectangle(0, 0, 5 * imp.getWidth() / 6, 5 * imp.getHeight() / 6);
-			if (imp.getFrame() + 1 < stacksize) {
+			if (imp.getFrame() + 1 <= stacksize) {
 				imp.setSlice(imp.getFrame() + 1);
-			} else
-				return;
+			} 
+			else{
+				IJ.log("Max frame number exceeded, moving to last frame instead");
+				imp.setSlice(stacksize );
+				currentslice = stacksize ;
+			}
 			currentslice = imp.getFrame();
 
 			if (imp.getType() == ImagePlus.COLOR_RGB || imp.getType() == ImagePlus.COLOR_256) {
@@ -471,10 +584,8 @@ public class InteractiveActiveContour implements PlugIn {
 			// access
 			source = convertToFloat(imp, channel, currentslice - 1, minIntensityImage, maxIntensityImage);
 
-			// show the interactive kit
-			displaySliders();
+			
 
-			// compute first version
 			updatePreview(ValueChange.SLICE);
 			isStarted = true;
 
@@ -520,12 +631,13 @@ public class InteractiveActiveContour implements PlugIn {
 			if (dialog) {
 				// add listener to the imageplus slice slider
 				sliceObserver = new SliceObserver(imp, new ImagePlusListener());
+				
 				imp.setSlice(imp.getFrame());
-				standardRectangle = new Rectangle(0, 0, 5 * imp.getWidth() / 6, 5 * imp.getHeight() / 6);
-				if (currentslice < stacksize) {
+				
+				if (currentslice <= stacksize) {
 					imp.setSlice(currentslice);
 				} else{
-					IJ.log("Last frame number exceeded, moving to last frame instead");
+					IJ.log("Max frame number exceeded, moving to last frame instead");
 					imp.setSlice(stacksize );
 					currentslice = stacksize ;
 				}
@@ -549,8 +661,7 @@ public class InteractiveActiveContour implements PlugIn {
 				// access
 				source = convertToFloat(imp, channel, currentslice - 1, minIntensityImage, maxIntensityImage);
 
-				// show the interactive kit
-				displaySliders();
+				
 
 				// compute first version
 				updatePreview(ValueChange.SLICE);
@@ -587,6 +698,110 @@ public class InteractiveActiveContour implements PlugIn {
 					}
 				}
 			}
+		}
+	}
+	protected class moveAllListener implements ActionListener {
+		@Override
+		public void actionPerformed(final ActionEvent arg0) {
+
+			// add listener to the imageplus slice slider
+			sliceObserver = new SliceObserver(imp, new ImagePlusListener());
+			
+
+					
+			imp.setSlice(imp.getFrame());
+			
+			int next = imp.getFrame();
+			for (int index = next; index <= stacksize; ++index){
+				imp.setSlice(index);
+				currentslice = imp.getFrame();
+				ImagePlus newimp = new ImagePlus("Currentslice " + currentslice,
+						imp.getImageStack().getProcessor(currentslice).duplicate());
+				Roi roi = imp.getRoi();
+				final Rectangle rect = roi.getBounds();
+				InteractiveSnake snake = new InteractiveSnake(newimp, currentslice);
+			
+			
+			
+			
+
+			
+			RoiManager manager = RoiManager.getInstance();
+			if (manager != null) {
+				manager.getRoisAsArray();
+			}
+			    
+			// copy the ImagePlus into an ArrayImage<FloatType> for faster
+			// access
+			source = convertToFloat(imp, channel, currentslice - 1, minIntensityImage, maxIntensityImage);
+
+			
+			updatePreview(ValueChange.SLICE);
+			
+   
+			
+
+			isStarted = true;
+
+			// check whenever roi is modified to update accordingly
+			roiListener = new RoiListener();
+			imp.getCanvas().addMouseListener(roiListener);
+
+			
+
+			for (final DifferenceOfGaussianPeak<FloatType> peak : peaks) {
+				if ((peak.isMax() && lookForMaxima) || (peak.isMin() && lookForMinima)) {
+					final float x = peak.getPosition(0);
+					final float y = peak.getPosition(1);
+
+					if (Math.abs(peak.getValue().get()) > threshold && x >= extraSize / 2 && y >= extraSize / 2
+							&& x < rect.width + extraSize / 2 && y < rect.height + extraSize / 2) {
+						final OvalRoi or = new OvalRoi(Util.round(x - sigma) + rect.x - extraSize / 2,
+								Util.round(y - sigma) + rect.y - extraSize / 2, Util.round(sigma + sigma2),
+								Util.round(sigma + sigma2));
+
+						if (peak.isMax())
+							or.setStrokeColor(Color.red);
+						else if (peak.isMin())
+							or.setStrokeColor(Color.green);
+
+						newimp.setRoi(or);
+
+					}
+
+				}
+			}
+     ImageProcessor ip = newimp.getProcessor();
+     
+     if (Auto){
+     if (index > next)
+			snake.Auto = true;
+     }
+			snake.run(ip);
+			
+			ImageStack currentimg = snake.getResult();
+			new ImagePlus("Snake Roi's for slice:" + currentslice, currentimg).show();
+			ArrayList<SnakeObject> currentsnakes = snake.getRoiList();
+			if (snake.saveIntensity) {
+
+				snake.writeIntensities(usefolder + "//" + "StaticPropertieszStack" + "-z", currentslice, currentsnakes);
+
+			}
+			 RoiEncoder saveRoi;
+			if (snake.saverois){
+				for (int indexs = 0; indexs < currentsnakes.size(); ++ indexs){
+				Roi roiToSave = currentsnakes.get(indexs).roi;	
+				int roiindex = currentsnakes.get(indexs).Label;
+				saveRoi = new RoiEncoder(usefolder + "//" + "Roi" + roiindex +"-z" + currentslice + ".roi");
+                try {
+					saveRoi.write(roiToSave);
+				} catch (IOException e) {
+					e.printStackTrace();
+				}
+				}
+			}
+		}
+			
 		}
 	}
 
@@ -643,7 +858,6 @@ public class InteractiveActiveContour implements PlugIn {
                 try {
 					saveRoi.write(roiToSave);
 				} catch (IOException e) {
-					// TODO Auto-generated catch block
 					e.printStackTrace();
 				}
 				}
@@ -809,7 +1023,7 @@ public class InteractiveActiveContour implements PlugIn {
 
 	protected void displaySliders() {
 		final Frame frame = new Frame("Adjust Difference-of-Gaussian Values");
-		frame.setSize(450, 450);
+		frame.setSize(500, 500);
 
 		/* Instantiation */
 		final GridBagLayout layout = new GridBagLayout();
@@ -835,9 +1049,11 @@ public class InteractiveActiveContour implements PlugIn {
 
 		final Button button = new Button("Done");
 		final Button cancel = new Button("Cancel");
-		final Button snakes = new Button("Apply snakes to Roi's");
+		final Button snakes = new Button("Apply snakes to current Frame selection");
 		final Button moveNextListener = new Button("Move to next frame");
 		final Button JumpFrame = new Button("Jump to frame number:");
+		final Button ApplytoStack = new Button("Run Dog and snakes for all frames");
+		final Checkbox Auto = new Checkbox("Snake parameters same for all Frames");
 		final Checkbox sigma2Enable = new Checkbox("Enable Manual Adjustment of Sigma 2 ", enableSigma2);
 		final Checkbox min = new Checkbox("Look for Minima (green)", lookForMinima);
 		final Checkbox max = new Checkbox("Look for Maxima (red)", lookForMaxima);
@@ -887,10 +1103,20 @@ public class InteractiveActiveContour implements PlugIn {
 		++c.gridy;
 		c.insets = new Insets(0, 100, 0, 100);
 		frame.add(JumpFrame, c);
-
+		
 		++c.gridy;
 		c.insets = new Insets(10, 100, 10, 100);
 		frame.add(snakes, c);
+	
+		++c.gridy;
+		c.insets = new Insets(0, 135, 0, 75);
+		frame.add(Auto, c);
+		
+		++c.gridy;
+		c.insets = new Insets(0, 125, 0, 95);
+		frame.add(ApplytoStack, c);
+		
+		
 
 		++c.gridy;
 		c.insets = new Insets(10, 150, 0, 150);
@@ -910,8 +1136,10 @@ public class InteractiveActiveContour implements PlugIn {
 		snakes.addActionListener(new snakeButtonListener());
 		moveNextListener.addActionListener(new moveNextListener());
 		JumpFrame.addActionListener(new moveToFrameListener());
+		ApplytoStack.addActionListener(new moveAllListener() );
 		min.addItemListener(new MinListener());
 		max.addItemListener(new MaxListener());
+		Auto.addItemListener(new AutoListener());
 		sigma2Enable.addItemListener(new EnableListener(sigma2, sigmaText2));
 
 		if (!sigma2IsAdjustable)
@@ -969,6 +1197,19 @@ public class InteractiveActiveContour implements PlugIn {
 		}
 	}
 
+	
+	protected class AutoListener implements ItemListener {
+		@Override
+		public void itemStateChanged(final ItemEvent arg0) {
+
+			if (arg0.getStateChange() == ItemEvent.DESELECTED)
+				Auto = false;
+			else if (arg0.getStateChange() == ItemEvent.SELECTED)
+				Auto = true;
+
+			
+		}
+	}
 	protected class MaxListener implements ItemListener {
 		@Override
 		public void itemStateChanged(final ItemEvent arg0) {
@@ -984,6 +1225,8 @@ public class InteractiveActiveContour implements PlugIn {
 					SimpleMultiThreading.threadWait(10);
 
 				updatePreview(ValueChange.MINMAX);
+				
+				
 			}
 		}
 	}
@@ -1275,7 +1518,6 @@ public class InteractiveActiveContour implements PlugIn {
 		IJ.run("16-bit");
 		final ImagePlus currentimp = IJ.getImage();
 		
-		currentimp.setRoi(0, 0, 5 * currentimp.getWidth() / 6, 5 * currentimp.getHeight() / 6);
 
 		// new
 		// InteractiveActiveContour(currentimp).run(currentimp.getProcessor());
