@@ -44,9 +44,20 @@ import java.awt.event.MouseEvent;
 import java.awt.event.MouseListener;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileWriter;
 import java.io.IOException;
+import java.nio.file.Path;
+import java.text.NumberFormat;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Map.Entry;
 
 import mpicbg.imglib.algorithm.MultiThreaded;
 import mpicbg.imglib.algorithm.MultiThreadedAlgorithm;
@@ -116,10 +127,13 @@ public class InteractiveActiveContour implements PlugIn {
 	double minIntensityImage = Double.NaN;
 	double maxIntensityImage = Double.NaN;
 	String usefolder = IJ.getDirectory("imagej");
-	String addToName = "";
+	String addToName = "StaticPropertieszStackwBio";
+	
+	
 	SliceObserver sliceObserver;
 	RoiListener roiListener;
 	ImagePlus imp;
+	ImagePlus Intensityimp;
 	int channel = 0;
 	Rectangle rectangle;
 	Image<FloatType> img;
@@ -147,6 +161,7 @@ public class InteractiveActiveContour implements PlugIn {
 	boolean lookForMinima = false;
 	boolean Auto = false;
 	boolean lookForMaxima = true;
+	
 
 	public static enum ValueChange {
 		SIGMA, THRESHOLD, SLICE, ROI, MINMAX, ALL
@@ -220,15 +235,17 @@ public class InteractiveActiveContour implements PlugIn {
 		return source;
 	}
 
-	public InteractiveActiveContour(final ImagePlus imp, final int channel) {
+	public InteractiveActiveContour(final ImagePlus imp, final ImagePlus Intensityimp, final int channel) {
 		this.imp = imp;
+		this.Intensityimp = Intensityimp;
 		this.channel = channel;
 		standardRectangle = new Rectangle(0, 0,  imp.getWidth() - 1,  imp.getHeight() - 1);
 
 	}
 
-	public InteractiveActiveContour(final ImagePlus imp) {
+	public InteractiveActiveContour(final ImagePlus imp, final ImagePlus Intensityimp) {
 		this.imp = imp;
+		this.Intensityimp = Intensityimp;
 		standardRectangle = new Rectangle(0, 0,  imp.getWidth() - 1,  imp.getHeight() - 1);
 
 	}
@@ -314,6 +331,25 @@ public class InteractiveActiveContour implements PlugIn {
 		}
 		return !gd.wasCanceled();
 	}
+	
+	private boolean Dialoguesec() {
+		GenericDialog gd = new GenericDialog("Choose Final Frame");
+
+		if (stacksize > 1) {
+			gd.addNumericField("Do till frame", stacksize, 0);
+
+			assert (int)gd.getNextNumber() > 1;
+		}
+
+		gd.showDialog();
+		if (stacksize > 1) {
+			stacksize = (int) gd.getNextNumber();
+			
+
+		}
+		return !gd.wasCanceled();
+	}
+	
 
 	/**
 	 * Updates the Preview with the current parameters (sigma, threshold, roi,
@@ -673,6 +709,7 @@ public class InteractiveActiveContour implements PlugIn {
 
 				ImagePlus newimp = new ImagePlus("Currentslice " + currentslice,
 						imp.getImageStack().getProcessor(currentslice).duplicate());
+			
 				final Rectangle rect = roi.getBounds();
 
 				for (final DifferenceOfGaussianPeak<FloatType> peak : peaks) {
@@ -708,21 +745,22 @@ public class InteractiveActiveContour implements PlugIn {
 			sliceObserver = new SliceObserver(imp, new ImagePlusListener());
 			
 
+			boolean dialog = Dialoguesec();
 					
 			imp.setSlice(imp.getFrame());
-			
+			Intensityimp.setSlice(imp.getSlice());
 			int next = imp.getFrame();
 			for (int index = next; index <= stacksize; ++index){
 				imp.setSlice(index);
 				currentslice = imp.getFrame();
+				Intensityimp.setSlice(imp.getSlice());
 				ImagePlus newimp = new ImagePlus("Currentslice " + currentslice,
 						imp.getImageStack().getProcessor(currentslice).duplicate());
+				ImagePlus Intensitynewimp = new ImagePlus("Currentslice " + currentslice,
+						Intensityimp.getImageStack().getProcessor(currentslice).duplicate());
 				Roi roi = imp.getRoi();
 				final Rectangle rect = roi.getBounds();
-				InteractiveSnake snake = new InteractiveSnake(newimp, currentslice);
-			
-			
-			
+				InteractiveSnake snake = new InteractiveSnake(newimp,Intensitynewimp, currentslice);
 			
 
 			
@@ -784,7 +822,7 @@ public class InteractiveActiveContour implements PlugIn {
 			ArrayList<SnakeObject> currentsnakes = snake.getRoiList();
 			if (snake.saveIntensity) {
 
-				snake.writeIntensities(usefolder + "//" + "StaticPropertieszStack" + "-z", currentslice, currentsnakes);
+				snake.writeIntensities(usefolder + "//" + addToName + "-z", currentslice, currentsnakes);
 
 			}
 			 RoiEncoder saveRoi;
@@ -792,7 +830,7 @@ public class InteractiveActiveContour implements PlugIn {
 				for (int indexs = 0; indexs < currentsnakes.size(); ++ indexs){
 				Roi roiToSave = currentsnakes.get(indexs).roi;	
 				int roiindex = currentsnakes.get(indexs).Label;
-				saveRoi = new RoiEncoder(usefolder + "//" + "Roi" + roiindex +"-z" + currentslice + ".roi");
+				saveRoi = new RoiEncoder(usefolder + "//" + "Roi" + addToName + roiindex +"-z" + currentslice + ".roi");
                 try {
 					saveRoi.write(roiToSave);
 				} catch (IOException e) {
@@ -811,9 +849,11 @@ public class InteractiveActiveContour implements PlugIn {
 
 			ImagePlus newimp = new ImagePlus("Currentslice " + currentslice,
 					imp.getImageStack().getProcessor(currentslice).duplicate());
+			ImagePlus Intensitynewimp = new ImagePlus("Currentslice " + currentslice,
+					Intensityimp.getImageStack().getProcessor(currentslice).duplicate());
 			Roi roi = imp.getRoi();
 			final Rectangle rect = roi.getBounds();
-			InteractiveSnake snake = new InteractiveSnake(newimp, currentslice);
+			InteractiveSnake snake = new InteractiveSnake(newimp,Intensitynewimp, currentslice);
 
 			for (final DifferenceOfGaussianPeak<FloatType> peak : peaks) {
 				if ((peak.isMax() && lookForMaxima) || (peak.isMin() && lookForMinima)) {
@@ -846,7 +886,7 @@ public class InteractiveActiveContour implements PlugIn {
 			ArrayList<SnakeObject> currentsnakes = snake.getRoiList();
 			if (snake.saveIntensity) {
 
-				snake.writeIntensities(usefolder + "//" + "StaticPropertieszStack" + "-z", currentslice, currentsnakes);
+				snake.writeIntensities(usefolder + "//" + addToName + "-z", currentslice, currentsnakes);
 
 			}
 			 RoiEncoder saveRoi;
@@ -854,7 +894,7 @@ public class InteractiveActiveContour implements PlugIn {
 				for (int index = 0; index < currentsnakes.size(); ++ index){
 				Roi roiToSave = currentsnakes.get(index).roi;	
 				int roiindex = currentsnakes.get(index).Label;
-				saveRoi = new RoiEncoder(usefolder + "//" + "Roi" + roiindex +"-z" + currentslice + ".roi");
+				saveRoi = new RoiEncoder(usefolder + "//" + "Roi" + addToName + roiindex +"-z" + currentslice + ".roi");
                 try {
 					saveRoi.write(roiToSave);
 				} catch (IOException e) {
@@ -1023,7 +1063,7 @@ public class InteractiveActiveContour implements PlugIn {
 
 	protected void displaySliders() {
 		final Frame frame = new Frame("Adjust Difference-of-Gaussian Values");
-		frame.setSize(500, 500);
+		frame.setSize(550, 550);
 
 		/* Instantiation */
 		final GridBagLayout layout = new GridBagLayout();
@@ -1047,13 +1087,14 @@ public class InteractiveActiveContour implements PlugIn {
 
 		final Label thresholdText = new Label("Threshold = " + this.threshold, Label.CENTER);
 
-		final Button button = new Button("Done");
+		 
+		final Button button = new Button("Compile results and exit");
 		final Button cancel = new Button("Cancel");
 		final Button snakes = new Button("Apply snakes to current Frame selection");
 		final Button moveNextListener = new Button("Move to next frame");
 		final Button JumpFrame = new Button("Jump to frame number:");
-		final Button ApplytoStack = new Button("Run Dog and snakes for all frames");
-		final Checkbox Auto = new Checkbox("Snake parameters same for all Frames");
+		final Button ApplytoStack = new Button("Automated run for all frames");
+		final Checkbox Auto = new Checkbox("Constant Snake and DoG over Frames");
 		final Checkbox sigma2Enable = new Checkbox("Enable Manual Adjustment of Sigma 2 ", enableSigma2);
 		final Checkbox min = new Checkbox("Look for Minima (green)", lookForMinima);
 		final Checkbox max = new Checkbox("Look for Maxima (red)", lookForMaxima);
@@ -1077,7 +1118,7 @@ public class InteractiveActiveContour implements PlugIn {
 		frame.add(sigmaText2, c);
 
 		++c.gridy;
-		c.insets = new Insets(0, 65, 0, 65);
+		c.insets = new Insets(0, 165, 0, 165);
 		frame.add(sigma2Enable, c);
 
 		++c.gridy;
@@ -1089,11 +1130,11 @@ public class InteractiveActiveContour implements PlugIn {
 		frame.add(thresholdText, c);
 
 		++c.gridy;
-		c.insets = new Insets(0, 130, 0, 75);
+		c.insets = new Insets(0, 170, 0, 75);
 		frame.add(min, c);
 
 		++c.gridy;
-		c.insets = new Insets(0, 125, 0, 75);
+		c.insets = new Insets(0, 170, 0, 75);
 		frame.add(max, c);
 
 		++c.gridy;
@@ -1109,7 +1150,7 @@ public class InteractiveActiveContour implements PlugIn {
 		frame.add(snakes, c);
 	
 		++c.gridy;
-		c.insets = new Insets(0, 135, 0, 75);
+		c.insets = new Insets(0, 170, 0, 75);
 		frame.add(Auto, c);
 		
 		++c.gridy;
@@ -1131,8 +1172,8 @@ public class InteractiveActiveContour implements PlugIn {
 				new SigmaListener(sigmaText1, sigmaMin, sigmaMax, scrollbarSize, sigma1, sigma2, sigmaText2));
 		sigma2.addAdjustmentListener(new Sigma2Listener(sigmaMin, sigmaMax, scrollbarSize, sigma2, sigmaText2));
 		threshold.addAdjustmentListener(new ThresholdListener(thresholdText, thresholdMin, thresholdMax));
-		button.addActionListener(new FinishedButtonListener(frame, false));
-		cancel.addActionListener(new FinishedButtonListener(frame, true));
+		button.addActionListener(new FinishedButtonListener(frame));
+		cancel.addActionListener(new CancelButtonListener(frame, true));
 		snakes.addActionListener(new snakeButtonListener());
 		moveNextListener.addActionListener(new moveNextListener());
 		JumpFrame.addActionListener(new moveToFrameListener());
@@ -1269,62 +1310,72 @@ public class InteractiveActiveContour implements PlugIn {
 
 	}
 
-	protected class ApplyButtonListener implements ActionListener {
-		@Override
-		public void actionPerformed(final ActionEvent arg0) {
-			ImagePlus imp;
-
-			try {
-				imp = source.getImagePlus();
-			} catch (ImgLibException e) {
-				imp = null;
-				e.printStackTrace();
-			}
-
-			// convert ImgLib2 image to ImgLib1 image via the imageplus
-			final Image<FloatType> source = ImageJFunctions.wrapFloat(imp);
-
-			IOFunctions.println("Computing DoG ... ");
-
-			// test the parameters on the complete stack
-			final ArrayList<DifferenceOfGaussianPeak<FloatType>> peaks = DetectionSegmentation
-					.extractBeadsLaPlaceImgLib(source, new OutOfBoundsStrategyMirrorFactory<FloatType>(), imageSigma,
-							sigma, sigma2, threshold, threshold / 4, lookForMaxima, lookForMinima,
-							ViewStructure.DEBUG_MAIN);
-
-			IOFunctions.println("Drawing DoG result ... ");
-
-			// display as extra image
-			Image<FloatType> detections = source.createNewImage();
-			final LocalizableByDimCursor<FloatType> c = detections.createLocalizableByDimCursor();
-
-			for (final DifferenceOfGaussianPeak<FloatType> peak : peaks) {
-				final LocalizablePoint p = new LocalizablePoint(
-						new float[] { peak.getSubPixelPosition(0), peak.getSubPixelPosition(1) });
-
-				c.setPosition(p);
-				c.getType().set(1);
-			}
-
-			IOFunctions.println("Convolving DoG result ... ");
-
-			final GaussianConvolutionReal<FloatType> gauss = new GaussianConvolutionReal<FloatType>(detections,
-					new OutOfBoundsStrategyValueFactory<FloatType>(), 2);
-			gauss.process();
-
-			detections = gauss.getResult();
-
-			IOFunctions.println("Showing DoG result ... ");
-
-			ImageJFunctions.show(detections);
-		}
-	}
 
 	protected class FinishedButtonListener implements ActionListener {
 		final Frame parent;
-		final boolean cancel;
+		public FinishedButtonListener(Frame parent) {
+			this.parent = parent;
+		}
+		public void actionPerformed(final ActionEvent arg0) {
+			
+			
+			File fichier = new File(addToName + "All" + ".txt");
+	         try {
+				FileWriter fw = new FileWriter(fichier);
+				 BufferedWriter bw = new BufferedWriter(fw);
+				
+			File folder = new File(usefolder); 
+			File[] files = folder.listFiles();
+			
+		HashMap<Integer, File> filesmap = new HashMap<Integer, File>();
+		
+		for (int i = 0 ; i < files.length; ++i	){
+			File file = files[i];
+			 if (file.isFile() && file.getName().contains(addToName)) {
+				 
+				 filesmap.put(i, file);
+			 }
+			
+		}
+         IJ.log("Total files to be combined:" + filesmap.size());
+		  // create your iterator for your map
+	    Iterator<Entry<Integer, File>> it = filesmap.entrySet().iterator();
+	    
+	    while (it.hasNext() ) {
 
-		public FinishedButtonListener(Frame parent, final boolean cancel) {
+	        // the key/value pair is stored here in pairs
+	        Map.Entry<Integer, File> pairs = it.next();
+	        int c;
+	    	FileInputStream  in = new FileInputStream(pairs.getValue());
+	    	while ((c = in.read()) != -1) {
+	    		
+	            bw.write(c);
+	    	}	        
+	    }
+	
+			 bw.close();
+	         fw.close();
+	         IJ.log("Compiled the final results in the folder:" + usefolder );
+	         }
+	        
+			catch (IOException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+	        
+	         wasCanceled = true;
+				close(parent, sliceObserver, imp, roiListener);
+		}
+		
+		}
+	protected class CancelButtonListener implements ActionListener {
+		final Frame parent;
+		final boolean cancel;
+		
+		
+		
+		//usefolder + "//" + "StaticPropertieszStack" + "-z", currentslice
+		public CancelButtonListener(Frame parent, final boolean cancel) {
 			this.parent = parent;
 			this.cancel = cancel;
 		}
@@ -1512,17 +1563,18 @@ public class InteractiveActiveContour implements PlugIn {
 		new ImageJ();
 
 		ImagePlus imp = new Opener().openImage("/Users/varunkapoor/res/mCherry-test.tif");
+		ImagePlus Intensityimp = new Opener().openImage("/Users/varunkapoor/res/BioLum-test.tif");
 		imp.show();
-
 		// Convert the image to 8-bit or 16-bit, very crucial for snakes
 		IJ.run("16-bit");
 		final ImagePlus currentimp = IJ.getImage();
+		Intensityimp.show();
+		IJ.run("16-bit");
+		final ImagePlus currentIntensityimp = IJ.getImage();
+		
 		
 
-		// new
-		// InteractiveActiveContour(currentimp).run(currentimp.getProcessor());
-
-		new InteractiveActiveContour(currentimp).run(null);
+		new InteractiveActiveContour(currentimp, currentIntensityimp).run(null);
 
 	}
 }

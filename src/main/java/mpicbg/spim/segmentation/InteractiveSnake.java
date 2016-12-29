@@ -22,12 +22,7 @@ package mpicbg.spim.segmentation;
   import ij.plugin.filter.PlugInFilter;
   import ij.plugin.frame.*;
   import ij.process.*;
-import mpicbg.imglib.algorithm.scalespace.DifferenceOfGaussianPeak;
-import mpicbg.imglib.type.numeric.real.FloatType;
-import net.imglib2.img.Img;
-import net.imglib2.img.display.imagej.ImageJFunctions;
-import net.imglib2.type.numeric.RealType;
-import spim.fiji.plugin.Max_Project;
+
 
 import java.awt.*;
 import java.io.BufferedWriter;
@@ -37,9 +32,7 @@ import java.io.IOException;
 import java.text.NumberFormat;
 import java.util.ArrayList;
 import java.util.Locale;
-import java.util.concurrent.atomic.AtomicInteger;
-  import java.util.logging.Level;
-  import java.util.logging.Logger;
+
 
   /**
    * ABSnake_ plugin interface
@@ -52,9 +45,12 @@ import java.util.concurrent.atomic.AtomicInteger;
       // Sauvegarde de la fenetre d'image :
 
       ImagePlus imp;
-      // Sauvegarde de la pile de debut et de resultat :
+      ImagePlus Intensityimp;
+      
       ImageStack pile = null;
+      ImageStack Intensitypile = null;
       ImageStack pile_resultat = null;
+      ImageStack Intensitypile_resultat = null;
       ImageStack pile_seg = null;
       int currentSlice = -1;
       // Dimensions of the stck :
@@ -71,20 +67,18 @@ import java.util.concurrent.atomic.AtomicInteger;
       int Frame;
       
 
-      
-      public InteractiveSnake (ImagePlus imp){
+   
+      public InteractiveSnake (ImagePlus imp, ImagePlus Intensityimp, final int Frame){
     	  
     	  this.imp = imp;
-      }
-      
-      public InteractiveSnake (ImagePlus imp, final int Frame){
-    	  
-    	  this.imp = imp;
+    	  this.Intensityimp = Intensityimp;
     	  this.Frame = Frame;
       }
-      public InteractiveSnake (ImagePlus imp, final int channel, final int Frame){
+      
+      public InteractiveSnake (ImagePlus imp, ImagePlus Intensityimp, final int channel, final int Frame){
     	  
     	  this.imp = imp;
+    	  this.Intensityimp = Intensityimp;
     	  this.channel = channel;
     	  this.Frame = Frame;
       }
@@ -94,17 +88,17 @@ import java.util.concurrent.atomic.AtomicInteger;
        */
       SnakeConfigDriver configDriver;
       // number of iterations
-      int ite = 300;
+      int ite = 500;
       // step to display snake
       int step = ite - 1;
       // threshold of edges
-      int Gradthresh = 5;
+      int Gradthresh = 1;
       // how far to look for edges
-      int DistMAX = Prefs.getInt("ABSnake_DistSearch.int", 50);
+      int DistMAX = Prefs.getInt("ABSnake_DistSearch.int", 100);
       // maximum displacement
-      double force = 2.5;
+      double force = 50;
       // regularization factors, min and max
-      double reg = 10.5;
+      double reg = 50;
       double regmin, regmax;
       // first and last slice to process
       int slice1, slice2;
@@ -136,6 +130,7 @@ import java.util.concurrent.atomic.AtomicInteger;
     	  
     	  snakeList = new ArrayList<SnakeObject>();
           pile = imp.getStack();
+          Intensitypile = Intensityimp.getStack();
           // sizes of the stack
           stacksize = pile.getSize();
           length = pile.getWidth();
@@ -187,6 +182,7 @@ import java.util.concurrent.atomic.AtomicInteger;
               // ?
               // init result
               pile_resultat = new ImageStack(length, height, java.awt.image.ColorModel.getRGBdefault());
+              Intensitypile_resultat = new ImageStack(length, height, java.awt.image.ColorModel.getRGBdefault());
               if (createsegimage) {
                   pile_seg = new ImageStack(length, height);
               }
@@ -195,8 +191,10 @@ import java.util.concurrent.atomic.AtomicInteger;
               String label = "" + imp.getTitle();
               for (int z = 0; z < stacksize; z++) {
                   pile_resultat.addSlice(label, pile.getProcessor(z + 1).duplicate().convertToRGB());
+            	  Intensitypile_resultat.addSlice(label, Intensitypile.getProcessor(z + 1).duplicate().convertToRGB());
+
               }
-            
+             
 
               //display sices in RGB color
               ColorProcessor image;
@@ -209,6 +207,7 @@ import java.util.concurrent.atomic.AtomicInteger;
               int sens = slice1 < slice2 ? 1 : -1;
               for (int z = slice1; z != (slice2 + sens); z += sens) {
                   ColorProcessor imageDraw = (ColorProcessor) (pile_resultat.getProcessor(z).duplicate());
+                  ColorProcessor IntensityimageDraw = (ColorProcessor) (Intensitypile_resultat.getProcessor(z).duplicate());
                   image = (ColorProcessor) (pile_resultat.getProcessor(z).duplicate());
                   plus = new ImagePlus("Running snakes in current Frame ", image);
                  
@@ -229,12 +228,13 @@ import java.util.concurrent.atomic.AtomicInteger;
                       snake.killImages();
 
                       snake.DrawSnake(imageDraw, colorDraw, 1);
+                      snake.DrawSnake(IntensityimageDraw, colorDraw, 1);
                       RoisResult[i] = snake.createRoi();
                       RoisResult[i].setName("res-" + i);
                       RoisCurrent[i] = snake.createRoi();
 
                       pile_resultat.setPixels(imageDraw.getPixels(), z);
-
+                      Intensitypile_resultat.setPixels(IntensityimageDraw.getPixels(), z);
                       if (createsegimage) {
                           seg.copyBits(snake.segmentation(seg.getWidth(), seg.getHeight(), i + 1), 0, 0, Blitter.ADD);
                           seg.resetMinAndMax();
@@ -244,9 +244,9 @@ import java.util.concurrent.atomic.AtomicInteger;
                      
                       
                       ColorProcessor imagep = (ColorProcessor) (pile_resultat.getProcessor(z).duplicate());
-
+                      ColorProcessor Intensityimagep = (ColorProcessor) (Intensitypile_resultat.getProcessor(z).duplicate());
                       if (RoisResult[i]!=null){
-                      double IntensityRoi = getIntensity(imagep, RoisResult[i]);
+                      double IntensityRoi = getIntensity(Intensityimagep, RoisResult[i]);
                       double[] center = getCentreofMass(imagep, RoisResult[i]);
                       SnakeObject currentsnake = new SnakeObject(i, RoisResult[i], center, IntensityRoi);
                       snakeList.add(currentsnake);
@@ -539,7 +539,8 @@ import java.util.concurrent.atomic.AtomicInteger;
          BufferedWriter bw = new BufferedWriter(fw);
          bw.write("\tFramenumber\tRoiLabel\tCenterofMassX\tCenterofMassY\tIntensity\n");
          for (int index = 0; index < currentsnakes.size(); ++index){
-        	 if (currentsnakes.get(index).centreofMass!= null){
+        	 if (currentsnakes.get(index).centreofMass!= null && currentsnakes.get(index).Intensity > 0 ){
+        		
              bw.write("\t" + nb + "\t" + "\t" + currentsnakes.get(index).Label 
             		 + "\t" +"\t" + nf.format(currentsnakes.get(index).centreofMass[0]) + "\t" +"\t" 
          + nf.format(currentsnakes.get(index).centreofMass[1]) + "\t" +"\t" 
