@@ -1093,8 +1093,8 @@ public class InteractiveActiveContour implements PlugIn {
 		final Button snakes = new Button("Apply snakes to current Frame selection");
 		final Button moveNextListener = new Button("Move to next frame");
 		final Button JumpFrame = new Button("Jump to frame number:");
-		final Button ApplytoStack = new Button("Automated run for all frames");
-		final Checkbox Auto = new Checkbox("Constant Snake and DoG over Frames");
+		final Button ApplytoStack = new Button("Automated Snake run for all frames");
+		final Checkbox Auto = new Checkbox("Constant parameters over Frames");
 		final Checkbox sigma2Enable = new Checkbox("Enable Manual Adjustment of Sigma 2 ", enableSigma2);
 		final Checkbox min = new Checkbox("Look for Minima (green)", lookForMinima);
 		final Checkbox max = new Checkbox("Look for Maxima (red)", lookForMaxima);

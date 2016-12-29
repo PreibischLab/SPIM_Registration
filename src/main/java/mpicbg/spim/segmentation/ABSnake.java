@@ -27,7 +27,7 @@ public class ABSnake {
     double lambda[];
     int etat[];
     int NPT;
-    int NMAX = 10000;
+    int NMAX = 5000;
     int block, elimination, ARRET;
     boolean closed;
     SnakeConfig config;

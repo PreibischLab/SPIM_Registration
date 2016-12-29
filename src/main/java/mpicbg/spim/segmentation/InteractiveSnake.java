@@ -88,17 +88,17 @@ import java.util.Locale;
        */
       SnakeConfigDriver configDriver;
       // number of iterations
-      int ite = 500;
+      int ite = 200;
       // step to display snake
       int step = ite - 1;
       // threshold of edges
-      int Gradthresh = 1;
+      int Gradthresh = 5;
       // how far to look for edges
       int DistMAX = Prefs.getInt("ABSnake_DistSearch.int", 100);
       // maximum displacement
-      double force = 50;
+      double force = 2;
       // regularization factors, min and max
-      double reg = 50;
+      double reg = 2;
       double regmin, regmax;
       // first and last slice to process
       int slice1, slice2;
