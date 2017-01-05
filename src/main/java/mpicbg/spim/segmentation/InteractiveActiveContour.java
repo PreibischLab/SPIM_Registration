@@ -59,6 +59,13 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
 
+import org.jgrapht.graph.DefaultWeightedEdge;
+import org.jgrapht.graph.SimpleWeightedGraph;
+
+import blobObjects.FramedBlob;
+import blobObjects.Subgraphs;
+import costMatrix.CostFunction;
+import costMatrix.SquareDistCostFunction;
 import mpicbg.imglib.algorithm.MultiThreaded;
 import mpicbg.imglib.algorithm.MultiThreadedAlgorithm;
 import mpicbg.imglib.algorithm.MultiThreadedBenchmarkAlgorithm;
@@ -87,7 +94,10 @@ import net.imglib2.img.ImagePlusAdapter;
 import net.imglib2.img.Img;
 import net.imglib2.img.imageplus.FloatImagePlus;
 import net.imglib2.view.Views;
+import overlaytrack.DisplayGraph;
+import overlaytrack.DisplaysubGraph;
 import spim.process.fusion.FusionHelper;
+import trackerType.KFsearch;
 
 /**
  * An interactive tool for getting Intensity in ROI's using Active Contour
@@ -123,7 +133,9 @@ public class InteractiveActiveContour implements PlugIn {
 	float thresholdMin = 0.0001f;
 	float thresholdMax = 1f;
 	int thresholdInit = 500;
-
+	 int initialSearchradius = 10;
+	 int maxSearchradius = 15;
+	 int missedframes = 20;
 	double minIntensityImage = Double.NaN;
 	double maxIntensityImage = Double.NaN;
 	String usefolder = IJ.getDirectory("imagej");
@@ -161,8 +173,7 @@ public class InteractiveActiveContour implements PlugIn {
 	boolean lookForMinima = false;
 	boolean Auto = false;
 	boolean lookForMaxima = true;
-	
-
+	ArrayList<ArrayList<SnakeObject>> AllFrameSnakes;
 	public static enum ValueChange {
 		SIGMA, THRESHOLD, SLICE, ROI, MINMAX, ALL
 	}
@@ -266,7 +277,7 @@ public class InteractiveActiveContour implements PlugIn {
 	
 		// sizes of the stack
 		stacksize = imp.getStack().getSize();
-
+		 AllFrameSnakes = new ArrayList<ArrayList<SnakeObject>>();
 		slice2 = stacksize;
 
 		if (imp == null)
@@ -347,6 +358,26 @@ public class InteractiveActiveContour implements PlugIn {
 			
 
 		}
+		return !gd.wasCanceled();
+	}
+	
+	private boolean DialogueTracker() {
+		GenericDialog gd = new GenericDialog("Tracker");
+		 
+			
+			gd.addNumericField("Initial Search Radius", 50, 0);
+			gd.addNumericField("Max Movment of Blobs per frame", 15, 0);
+			gd.addNumericField("Blobs allowed to be lost for #frames", 20, 0);
+
+			
+		
+
+		gd.showDialog();
+		
+			initialSearchradius = (int) gd.getNextNumber();
+			maxSearchradius = (int) gd.getNextNumber();
+            missedframes = (int) gd.getNextNumber();
+		
 		return !gd.wasCanceled();
 	}
 	
@@ -820,6 +851,26 @@ public class InteractiveActiveContour implements PlugIn {
 			ImageStack currentimg = snake.getResult();
 			new ImagePlus("Snake Roi's for slice:" + currentslice, currentimg).show();
 			ArrayList<SnakeObject> currentsnakes = snake.getRoiList();
+			
+
+			if (AllFrameSnakes!= null){
+
+				for (int Listindex = 0; Listindex < AllFrameSnakes.size(); ++Listindex){
+					
+					SnakeObject SnakeFrame = AllFrameSnakes.get(Listindex).get(0);
+					int Frame = SnakeFrame.Framenumber;
+					
+					if (Frame == currentslice){
+						AllFrameSnakes.remove(Listindex);
+						
+					}
+				}
+				
+				
+				}
+			
+			AllFrameSnakes.add(currentsnakes);
+			IJ.log(" Size of List for tracker: " + AllFrameSnakes.size());
 			if (snake.saveIntensity) {
 
 				snake.writeIntensities(usefolder + "//" + addToName + "-z", currentslice, currentsnakes);
@@ -884,6 +935,28 @@ public class InteractiveActiveContour implements PlugIn {
 			ImageStack currentimg = snake.getResult();
 			new ImagePlus("Snake Roi's for slice:" + currentslice, currentimg).show();
 			ArrayList<SnakeObject> currentsnakes = snake.getRoiList();
+			if (AllFrameSnakes!= null){
+				
+				
+					
+					for (int Listindex = 0; Listindex < AllFrameSnakes.size(); ++Listindex){
+					
+					SnakeObject SnakeFrame = AllFrameSnakes.get(Listindex).get(0);
+					int Frame = SnakeFrame.Framenumber;
+					
+					if (Frame == currentslice){
+						AllFrameSnakes.remove(Listindex);
+						
+					}
+					}
+				
+				
+				}
+			
+			
+			
+			AllFrameSnakes.add(currentsnakes);
+			IJ.log("Size of list for tracker " + AllFrameSnakes.size());
 			if (snake.saveIntensity) {
 
 				snake.writeIntensities(usefolder + "//" + addToName + "-z", currentslice, currentsnakes);
@@ -1088,7 +1161,7 @@ public class InteractiveActiveContour implements PlugIn {
 		final Label thresholdText = new Label("Threshold = " + this.threshold, Label.CENTER);
 
 		 
-		final Button button = new Button("Compile results and exit");
+		final Button button = new Button("Start Tracking");
 		final Button cancel = new Button("Cancel");
 		final Button snakes = new Button("Apply snakes to current Frame selection");
 		final Button moveNextListener = new Button("Move to next frame");
@@ -1172,7 +1245,7 @@ public class InteractiveActiveContour implements PlugIn {
 				new SigmaListener(sigmaText1, sigmaMin, sigmaMax, scrollbarSize, sigma1, sigma2, sigmaText2));
 		sigma2.addAdjustmentListener(new Sigma2Listener(sigmaMin, sigmaMax, scrollbarSize, sigma2, sigmaText2));
 		threshold.addAdjustmentListener(new ThresholdListener(thresholdText, thresholdMin, thresholdMax));
-		button.addActionListener(new FinishedButtonListener(frame));
+		button.addActionListener(new TrackerButtonListener(frame));
 		cancel.addActionListener(new CancelButtonListener(frame, true));
 		snakes.addActionListener(new snakeButtonListener());
 		moveNextListener.addActionListener(new moveNextListener());
@@ -1311,9 +1384,9 @@ public class InteractiveActiveContour implements PlugIn {
 	}
 
 
-	protected class FinishedButtonListener implements ActionListener {
+	protected class TrackerButtonListener implements ActionListener {
 		final Frame parent;
-		public FinishedButtonListener(Frame parent) {
+		public TrackerButtonListener(Frame parent) {
 			this.parent = parent;
 		}
 		public void actionPerformed(final ActionEvent arg0) {
@@ -1355,16 +1428,36 @@ public class InteractiveActiveContour implements PlugIn {
 	
 			 bw.close();
 	         fw.close();
-	         IJ.log("Compiled the final results in the folder:" + usefolder );
+	         IJ.log("Compiled the Object properties for all frames in the folder:" + usefolder );
 	         }
 	        
 			catch (IOException e) {
 					// TODO Auto-generated catch block
 					e.printStackTrace();
 				}
+	         
 	        
-	         wasCanceled = true;
-				close(parent, sliceObserver, imp, roiListener);
+	        IJ.log("Start Tracking");
+	      
+	        boolean dialog = DialogueTracker();
+	        if (dialog){
+	   final CostFunction<SnakeObject, SnakeObject> DistCostFunction = new SquareDistCostFunction();
+	    KFsearch KFsimple = new KFsearch(AllFrameSnakes, DistCostFunction, initialSearchradius, maxSearchradius,
+				stacksize, missedframes);   
+	    KFsimple.process();
+	    ArrayList<Subgraphs> subgraph = KFsimple.getFramedgraph();
+		SimpleWeightedGraph<SnakeObject, DefaultWeightedEdge> graph = KFsimple.getResult();
+		ArrayList<FramedBlob> frameandblob = KFsimple.getFramelist();
+		
+		 ImagePlus impcopy = imp.duplicate();
+		 ImageJFunctions.wrap(impcopy);
+		 IJ.log("Tracking Complete " + " " + "Displaying results");
+		
+        
+		DisplayGraph totaldisplaytracks = new DisplayGraph(impcopy, graph);
+		totaldisplaytracks.getImp();
+	        }
+	    
 		}
 		
 		}

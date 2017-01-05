@@ -63,6 +63,7 @@ import java.util.Locale;
       Roi processRoi = null;
       Color colorDraw = Color.RED;
      ArrayList<SnakeObject> snakeList;
+     
       int channel;
       int Frame;
       
@@ -129,6 +130,7 @@ import java.util.Locale;
           // original stack
     	  
     	  snakeList = new ArrayList<SnakeObject>();
+    	 
           pile = imp.getStack();
           Intensitypile = Intensityimp.getStack();
           // sizes of the stack
@@ -209,7 +211,7 @@ import java.util.Locale;
                   ColorProcessor imageDraw = (ColorProcessor) (pile_resultat.getProcessor(z).duplicate());
                   ColorProcessor IntensityimageDraw = (ColorProcessor) (Intensitypile_resultat.getProcessor(z).duplicate());
                   image = (ColorProcessor) (pile_resultat.getProcessor(z).duplicate());
-                  plus = new ImagePlus("Running snakes in current Frame ", image);
+                  plus = new ImagePlus("Running snakes in current Frame " , image);
                  
                   for (int i = 0; i < RoisOrig.length; i++) {
                       if (createsegimage) {
@@ -248,7 +250,7 @@ import java.util.Locale;
                       if (RoisResult[i]!=null){
                       double IntensityRoi = getIntensity(Intensityimagep, RoisResult[i]);
                       double[] center = getCentreofMass(imagep, RoisResult[i]);
-                      SnakeObject currentsnake = new SnakeObject(i, RoisResult[i], center, IntensityRoi);
+                      SnakeObject currentsnake = new SnakeObject(Frame, i, RoisResult[i], center, IntensityRoi);
                       snakeList.add(currentsnake);
                       }
                   }
