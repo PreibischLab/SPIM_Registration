@@ -28,11 +28,14 @@ public class DisplayGraph {
 	private ImagePlus imp;
 	private final SimpleWeightedGraph<SnakeObject, DefaultWeightedEdge> graph;
 	private final int ndims;
+	final Color colorDraw;
 	
-	public DisplayGraph(final ImagePlus imp, SimpleWeightedGraph<SnakeObject, DefaultWeightedEdge> graph){
+	public DisplayGraph(final ImagePlus imp, SimpleWeightedGraph<SnakeObject, DefaultWeightedEdge> graph,
+			Color colorDraw){
 		
 		this.imp = imp;
 		this.graph = graph;
+		this.colorDraw = colorDraw;
 		ndims = imp.getNDimensions();
 		
 		// add listener to the imageplus slice slider
@@ -84,7 +87,7 @@ public class DisplayGraph {
 		       
 		       
 		        Line newline = new Line(startedge[0], startedge[1], targetedge[0], targetedge[1]);
-				newline.setStrokeColor(Color.GREEN);
+				newline.setStrokeColor(colorDraw);
 				newline.setStrokeWidth(graph.degreeOf(Spottarget));
 
 				o.add(newline);

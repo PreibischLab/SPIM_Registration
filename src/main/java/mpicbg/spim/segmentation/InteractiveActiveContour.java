@@ -129,7 +129,6 @@ public class InteractiveActiveContour implements PlugIn {
 	int nbRois;
 	Roi rorig = null;
 	Roi processRoi = null;
-	Color colorDraw = null;
 	float thresholdMin = 0.0001f;
 	float thresholdMax = 1f;
 	int thresholdInit = 500;
@@ -140,7 +139,7 @@ public class InteractiveActiveContour implements PlugIn {
 	double maxIntensityImage = Double.NaN;
 	String usefolder = IJ.getDirectory("imagej");
 	String addToName = "StaticPropertieszStackwBio";
-	
+	 Color colorDraw = Color.RED;
 	
 	SliceObserver sliceObserver;
 	RoiListener roiListener;
@@ -173,6 +172,7 @@ public class InteractiveActiveContour implements PlugIn {
 	boolean lookForMinima = false;
 	boolean Auto = false;
 	boolean lookForMaxima = true;
+	ImagePlus impcopy;
 	ArrayList<ArrayList<SnakeObject>> AllFrameSnakes;
 	public static enum ValueChange {
 		SIGMA, THRESHOLD, SLICE, ROI, MINMAX, ALL
@@ -274,7 +274,7 @@ public class InteractiveActiveContour implements PlugIn {
 	@Override
 	public void run(String arg) {
 		
-	
+		impcopy = imp.duplicate();
 		// sizes of the stack
 		stacksize = imp.getStack().getSize();
 		 AllFrameSnakes = new ArrayList<ArrayList<SnakeObject>>();
@@ -362,13 +362,16 @@ public class InteractiveActiveContour implements PlugIn {
 	}
 	
 	private boolean DialogueTracker() {
-		GenericDialog gd = new GenericDialog("Tracker");
-		 
-			
-			gd.addNumericField("Initial Search Radius", 50, 0);
+		
+		
+		 String[] colors = {"Red", "Green", "Blue", "Cyan", "Magenta", "Yellow", "Black", "White"};
+		 int indexcol = 0;
+		 // Create dialog
+		    GenericDialog gd = new GenericDialog("Tracker");
+			gd.addNumericField("Initial Search Radius", 10, 0);
 			gd.addNumericField("Max Movment of Blobs per frame", 15, 0);
 			gd.addNumericField("Blobs allowed to be lost for #frames", 20, 0);
-
+			gd.addChoice("Draw tracks with this color :", colors, colors[indexcol]);
 			
 		
 
@@ -377,7 +380,36 @@ public class InteractiveActiveContour implements PlugIn {
 			initialSearchradius = (int) gd.getNextNumber();
 			maxSearchradius = (int) gd.getNextNumber();
             missedframes = (int) gd.getNextNumber();
-		
+         // color choice of display
+            indexcol = gd.getNextChoiceIndex();
+            switch (indexcol) {
+                case 0:
+                    colorDraw = Color.red;
+                    break;
+                case 1:
+                    colorDraw = Color.green;
+                    break;
+                case 2:
+                    colorDraw = Color.blue;
+                    break;
+                case 3:
+                    colorDraw = Color.cyan;
+                    break;
+                case 4:
+                    colorDraw = Color.magenta;
+                    break;
+                case 5:
+                    colorDraw = Color.yellow;
+                    break;
+                case 6:
+                    colorDraw = Color.black;
+                    break;
+                case 7:
+                    colorDraw = Color.white;
+                    break;
+                default:
+                    colorDraw = Color.yellow;
+            }
 		return !gd.wasCanceled();
 	}
 	
@@ -1449,12 +1481,11 @@ public class InteractiveActiveContour implements PlugIn {
 		SimpleWeightedGraph<SnakeObject, DefaultWeightedEdge> graph = KFsimple.getResult();
 		ArrayList<FramedBlob> frameandblob = KFsimple.getFramelist();
 		
-		 ImagePlus impcopy = imp.duplicate();
-		 ImageJFunctions.wrap(impcopy);
+		 
 		 IJ.log("Tracking Complete " + " " + "Displaying results");
 		
         
-		DisplayGraph totaldisplaytracks = new DisplayGraph(impcopy, graph);
+		DisplayGraph totaldisplaytracks = new DisplayGraph(impcopy, graph, colorDraw);
 		totaldisplaytracks.getImp();
 	        }
 	    

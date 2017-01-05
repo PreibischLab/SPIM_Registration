@@ -142,7 +142,7 @@ public class KFsearch implements BlobTracker {
 		// Loop from the second frame to the last frame and build
 		// KalmanFilterMap
 
-		for (int frame = Firstframe; frame < maxframe; ++frame) {
+		for (int frame = Secondframe; frame < maxframe; frame++) {
 
 			SimpleWeightedGraph<SnakeObject, DefaultWeightedEdge> subgraph = new SimpleWeightedGraph<SnakeObject, DefaultWeightedEdge>(
 					DefaultWeightedEdge.class);
