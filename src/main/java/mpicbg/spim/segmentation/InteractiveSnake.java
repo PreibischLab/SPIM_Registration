@@ -1,3 +1,4 @@
+
 package mpicbg.spim.segmentation;
 
 
@@ -248,9 +249,11 @@ import java.util.Locale;
                       ColorProcessor imagep = (ColorProcessor) (pile_resultat.getProcessor(z).duplicate());
                       ColorProcessor Intensityimagep = (ColorProcessor) (Intensitypile_resultat.getProcessor(z).duplicate());
                       if (RoisResult[i]!=null){
-                      double IntensityRoi = getIntensity(Intensityimagep, RoisResult[i]);
+                      double IntensityBio = getIntensity(Intensityimagep, RoisResult[i]);
+                      double IntensityCherry = getIntensity(imagep, RoisResult[i]);
                       double[] center = getCentreofMass(imagep, RoisResult[i]);
-                      SnakeObject currentsnake = new SnakeObject(Frame, i, RoisResult[i], center, IntensityRoi);
+                      SnakeObject currentsnake = new SnakeObject(Frame, i, RoisResult[i], center, 
+                    		  IntensityCherry, IntensityBio);
                       snakeList.add(currentsnake);
                       }
                   }
@@ -531,7 +534,6 @@ import java.util.Locale;
     	  return center;
     	  
       }
-      
  public void writeIntensities(String nom, int nb,ArrayList<SnakeObject> currentsnakes) {
      NumberFormat nf = NumberFormat.getInstance(Locale.ENGLISH);
      nf.setMaximumFractionDigits(3);
@@ -539,15 +541,13 @@ import java.util.Locale;
          File fichier = new File(nom + nb + ".txt");
          FileWriter fw = new FileWriter(fichier);
          BufferedWriter bw = new BufferedWriter(fw);
-         bw.write("\tFramenumber\tRoiLabel\tCenterofMassX\tCenterofMassY\tIntensity\n");
+         bw.write("\tFramenumber\tRoiLabel\tCenterofMassX\tCenterofMassY\tIntensityCherry\tIntensityBio\n");
          for (int index = 0; index < currentsnakes.size(); ++index){
-        	 if (currentsnakes.get(index).centreofMass!= null && currentsnakes.get(index).Intensity > 0 ){
-        		
              bw.write("\t" + nb + "\t" + "\t" + currentsnakes.get(index).Label 
             		 + "\t" +"\t" + nf.format(currentsnakes.get(index).centreofMass[0]) + "\t" +"\t" 
          + nf.format(currentsnakes.get(index).centreofMass[1]) + "\t" +"\t" 
-            		 + nf.format(currentsnakes.get(index).Intensity)  + "\n");
-         }
+            		 + nf.format(currentsnakes.get(index).IntensityCherry)   +"\t" + "\t"
+                    		 + nf.format(currentsnakes.get(index).IntensityBio)  +  "\n");
          }
          bw.close();
          fw.close();

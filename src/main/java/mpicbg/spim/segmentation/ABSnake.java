@@ -225,12 +225,13 @@ public class ABSnake {
             File fichier = new File(nom + nb + ".txt");
             FileWriter fw = new FileWriter(fichier);
             BufferedWriter bw = new BufferedWriter(fw);
-            bw.write("\tFramenumber\tRoiLabel\tCenterofMassX\tCenterofMassY\tIntensity\n");
+            bw.write("\tFramenumber\tRoiLabel\tCenterofMassX\tCenterofMassY\tIntensityCherry\tIntensityBio\n");
             for (int index = 0; index < currentsnakes.size(); ++index){
                 bw.write("\t" + nb + "\t" + "\t" + currentsnakes.get(index).Label 
                		 + "\t" +"\t" + nf.format(currentsnakes.get(index).centreofMass[0]) + "\t" +"\t" 
             + nf.format(currentsnakes.get(index).centreofMass[1]) + "\t" +"\t" 
-               		 + nf.format(currentsnakes.get(index).Intensity)  + "\n");
+               		 + nf.format(currentsnakes.get(index).IntensityCherry)   +"\t" + "\t"
+                       		 + nf.format(currentsnakes.get(index).IntensityBio)  +  "\n");
             }
             bw.close();
             fw.close();

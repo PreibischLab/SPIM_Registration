@@ -52,16 +52,32 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.text.NumberFormat;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Set;
 
 import org.jgrapht.graph.DefaultWeightedEdge;
 import org.jgrapht.graph.SimpleWeightedGraph;
-
+import com.mxgraph.canvas.mxICanvas;
+import com.mxgraph.canvas.mxSvgCanvas;
+import com.mxgraph.io.mxCodec;
+import com.mxgraph.io.mxGdCodec;
+import com.mxgraph.swing.mxGraphComponent;
+import com.mxgraph.util.mxCellRenderer;
+import com.mxgraph.util.mxCellRenderer.CanvasFactory;
+import com.mxgraph.util.mxDomUtils;
+import com.mxgraph.util.mxUtils;
+import com.mxgraph.util.mxXmlUtils;
+import com.mxgraph.util.png.mxPngEncodeParam;
+import com.mxgraph.util.png.mxPngImageEncoder;
+import com.mxgraph.view.mxGraph;
 import blobObjects.FramedBlob;
 import blobObjects.Subgraphs;
 import costMatrix.CostFunction;
@@ -101,6 +117,8 @@ import spim.process.fusion.FusionHelper;
 import trackerType.BlobTracker;
 import trackerType.KFsearch;
 import trackerType.NNsearch;
+import trackerType.TrackModel;
+
 
 /**
  * An interactive tool for getting Intensity in ROI's using Active Contour
@@ -109,10 +127,7 @@ import trackerType.NNsearch;
  */
 
 public class InteractiveActiveContour implements PlugIn {
-	
 
-	
-	
 	final int extraSize = 40;
 	final int scrollbarSize = 1000;
 
@@ -135,15 +150,16 @@ public class InteractiveActiveContour implements PlugIn {
 	float thresholdMin = 0.0001f;
 	float thresholdMax = 1f;
 	int thresholdInit = 500;
-	 int initialSearchradius = 10;
-	 int maxSearchradius = 15;
-	 int missedframes = 20;
+	int initialSearchradius = 10;
+	int maxSearchradius = 15;
+	int missedframes = 20;
 	double minIntensityImage = Double.NaN;
 	double maxIntensityImage = Double.NaN;
 	String usefolder = IJ.getDirectory("imagej");
-	String addToName = "StaticPropertieszStackwBio";
-	 Color colorDraw = null;
-	
+	String addToName = "BlobinFramezStackwBio";
+	String addTrackToName = "TrackedBlobsID";
+	Color colorDraw = null;
+
 	SliceObserver sliceObserver;
 	RoiListener roiListener;
 	ImagePlus imp;
@@ -176,10 +192,11 @@ public class InteractiveActiveContour implements PlugIn {
 	boolean Auto = false;
 	boolean lookForMaxima = true;
 	ImagePlus impcopy;
-	BlobTracker blobtracker; 
-	 CostFunction<SnakeObject, SnakeObject> UserchosenCostFunction;
-	  //= new SquareDistCostFunction();
+	BlobTracker blobtracker;
+	CostFunction<SnakeObject, SnakeObject> UserchosenCostFunction;
+	// = new SquareDistCostFunction();
 	ArrayList<ArrayList<SnakeObject>> AllFrameSnakes;
+
 	public static enum ValueChange {
 		SIGMA, THRESHOLD, SLICE, ROI, MINMAX, ALL
 	}
@@ -256,18 +273,16 @@ public class InteractiveActiveContour implements PlugIn {
 		this.imp = imp;
 		this.Intensityimp = Intensityimp;
 		this.channel = channel;
-		standardRectangle = new Rectangle(0, 0,  imp.getWidth() - 1,  imp.getHeight() - 1);
+		standardRectangle = new Rectangle(0, 0, imp.getWidth() - 1, imp.getHeight() - 1);
 
 	}
 
 	public InteractiveActiveContour(final ImagePlus imp, final ImagePlus Intensityimp) {
 		this.imp = imp;
 		this.Intensityimp = Intensityimp;
-		standardRectangle = new Rectangle(0, 0,  imp.getWidth() - 1,  imp.getHeight() - 1);
+		standardRectangle = new Rectangle(0, 0, imp.getWidth() - 1, imp.getHeight() - 1);
 
 	}
-
-	
 
 	public void setMinIntensityImage(final double min) {
 		this.minIntensityImage = min;
@@ -279,22 +294,20 @@ public class InteractiveActiveContour implements PlugIn {
 
 	@Override
 	public void run(String arg) {
-		
+
 		impcopy = imp.duplicate();
 		// sizes of the stack
 		stacksize = imp.getStack().getSize();
-		 AllFrameSnakes = new ArrayList<ArrayList<SnakeObject>>();
+		AllFrameSnakes = new ArrayList<ArrayList<SnakeObject>>();
 		slice2 = stacksize;
 
 		if (imp == null)
 			imp = WindowManager.getCurrentImage();
 
-
 		if (imp.getType() == ImagePlus.COLOR_RGB || imp.getType() == ImagePlus.COLOR_256) {
 			IJ.log("Color images are not supported, please convert to 8, 16 or 32-bit grayscale");
 			return;
 		}
-		
 
 		Roi roi = imp.getRoi();
 
@@ -348,114 +361,109 @@ public class InteractiveActiveContour implements PlugIn {
 		}
 		return !gd.wasCanceled();
 	}
-	
+
 	private boolean Dialoguesec() {
 		GenericDialog gd = new GenericDialog("Choose Final Frame");
 
 		if (stacksize > 1) {
 			gd.addNumericField("Do till frame", stacksize, 0);
 
-			assert (int)gd.getNextNumber() > 1;
+			assert (int) gd.getNextNumber() > 1;
 		}
 
 		gd.showDialog();
 		if (stacksize > 1) {
 			stacksize = (int) gd.getNextNumber();
-			
 
 		}
 		return !gd.wasCanceled();
 	}
-	
+
 	private boolean DialogueTracker() {
-		
-		
-		 String[] colors = {"Red", "Green", "Blue", "Cyan", "Magenta", "Yellow", "Black", "White"};
-		 String[] whichtracker = {"Kalman (recommended)", "Nearest Neighbour"};
-		 String[] whichcost = {"Distance based", "Intensity based"};
-		 int indexcol = 0;
-		 int trackertype = 0;
-		 int functiontype = 0;
-		 
-		 // Create dialog
-		    GenericDialog gd = new GenericDialog("Tracker");
-		    gd.addChoice("Choose your tracker :", whichtracker, whichtracker[trackertype]);
-		    gd.addChoice("Choose your Cost function (for Kalman) :", whichcost, whichcost[functiontype]);
-			gd.addNumericField("Initial Search Radius", 10, 0);
-			gd.addNumericField("Max Movment of Blobs per frame", 15, 0);
-			gd.addNumericField("Blobs allowed to be lost for #frames", 20, 0);
-			gd.addChoice("Draw tracks with this color :", colors, colors[indexcol]);
-			
-		
+
+		String[] colors = { "Red", "Green", "Blue", "Cyan", "Magenta", "Yellow", "Black", "White" };
+		String[] whichtracker = { "Kalman (recommended)", "Nearest Neighbour" };
+		String[] whichcost = { "Distance based", "Intensity based" };
+		int indexcol = 0;
+		int trackertype = 0;
+		int functiontype = 0;
+
+		// Create dialog
+		GenericDialog gd = new GenericDialog("Tracker");
+
+		gd.addChoice("Choose your tracker :", whichtracker, whichtracker[trackertype]);
+		gd.addChoice("Choose your Cost function (for Kalman) :", whichcost, whichcost[functiontype]);
+		gd.addChoice("Draw tracks with this color :", colors, colors[indexcol]);
+
+		gd.addNumericField("Initial Search Radius", 10, 0);
+		gd.addNumericField("Max Movment of Blobs per frame", 15, 0);
+		gd.addNumericField("Blobs allowed to be lost for #frames", 20, 0);
 
 		gd.showDialog();
-		
-	
-			initialSearchradius = (int) gd.getNextNumber();
-			maxSearchradius = (int) gd.getNextNumber();
-            missedframes = (int) gd.getNextNumber();
-        	// Choice of tracker
-            trackertype = gd.getNextChoiceIndex();
-    		switch (trackertype){
-    		case 0:
-    			functiontype = gd.getNextChoiceIndex();
-              switch(functiontype){
-    			
-    			case 0:
-    				UserchosenCostFunction = new SquareDistCostFunction();
-    			break;
-    			
-    			case 1:
-    				UserchosenCostFunction = new IntensityDiffCostFunction();
-    			break;
-    			
-    			default:
-    				UserchosenCostFunction = new SquareDistCostFunction();
-    				
-    			
-    			}
-    			blobtracker =  new KFsearch(AllFrameSnakes, UserchosenCostFunction,
-    					maxSearchradius, initialSearchradius, stacksize, missedframes);
-    			break;
-    		case 1:
-    			blobtracker =  new NNsearch(AllFrameSnakes, maxSearchradius, stacksize);
-    			break;
-    		
-    		}    
-    		
-         // color choice of display
-            indexcol = gd.getNextChoiceIndex();
-            switch (indexcol) {
-                case 0:
-                    colorDraw = Color.red;
-                    break;
-                case 1:
-                    colorDraw = Color.green;
-                    break;
-                case 2:
-                    colorDraw = Color.blue;
-                    break;
-                case 3:
-                    colorDraw = Color.cyan;
-                    break;
-                case 4:
-                    colorDraw = Color.magenta;
-                    break;
-                case 5:
-                    colorDraw = Color.yellow;
-                    break;
-                case 6:
-                    colorDraw = Color.black;
-                    break;
-                case 7:
-                    colorDraw = Color.white;
-                    break;
-                default:
-                    colorDraw = Color.yellow;
-            }
+
+		initialSearchradius = (int) gd.getNextNumber();
+		maxSearchradius = (int) gd.getNextNumber();
+		missedframes = (int) gd.getNextNumber();
+		// Choice of tracker
+		trackertype = gd.getNextChoiceIndex();
+		switch (trackertype) {
+		case 0:
+			functiontype = gd.getNextChoiceIndex();
+			switch (functiontype) {
+
+			case 0:
+				UserchosenCostFunction = new SquareDistCostFunction();
+				break;
+
+			case 1:
+				UserchosenCostFunction = new IntensityDiffCostFunction();
+				break;
+
+			default:
+				UserchosenCostFunction = new SquareDistCostFunction();
+
+			}
+			blobtracker = new KFsearch(AllFrameSnakes, UserchosenCostFunction, maxSearchradius, initialSearchradius,
+					stacksize, missedframes);
+			break;
+		case 1:
+			blobtracker = new NNsearch(AllFrameSnakes, maxSearchradius, stacksize);
+			break;
+
+		}
+
+		// color choice of display
+		indexcol = gd.getNextChoiceIndex();
+		switch (indexcol) {
+		case 0:
+			colorDraw = Color.red;
+			break;
+		case 1:
+			colorDraw = Color.green;
+			break;
+		case 2:
+			colorDraw = Color.blue;
+			break;
+		case 3:
+			colorDraw = Color.cyan;
+			break;
+		case 4:
+			colorDraw = Color.magenta;
+			break;
+		case 5:
+			colorDraw = Color.yellow;
+			break;
+		case 6:
+			colorDraw = Color.black;
+			break;
+		case 7:
+			colorDraw = Color.white;
+			break;
+		default:
+			colorDraw = Color.yellow;
+		}
 		return !gd.wasCanceled();
 	}
-	
 
 	/**
 	 * Updates the Preview with the current parameters (sigma, threshold, roi,
@@ -529,10 +537,9 @@ public class InteractiveActiveContour implements PlugIn {
 			subpixel.process();
 
 			peaks = dog.getPeaks();
-			
+
 		}
 
-		
 		// extract peaks to show
 		Overlay o = imp.getOverlay();
 
@@ -550,21 +557,21 @@ public class InteractiveActiveContour implements PlugIn {
 		}
 
 		Roi[] RoisOrig = roimanager.getRoisAsArray();
-		
-		
-		
-		MouseEvent mev = new MouseEvent(imp.getCanvas(), MouseEvent.MOUSE_RELEASED,
-				System.currentTimeMillis(), 0, 0, 0, 1, false);
-		/*if ((change == ValueChange.ROI || change == ValueChange.SIGMA || change == ValueChange.MINMAX
-				|| change == ValueChange.SLICE || change == ValueChange.THRESHOLD && RoisOrig != null)
-         && mev!= null) {*/
-		if (mev!= null){
-		
+
+		MouseEvent mev = new MouseEvent(imp.getCanvas(), MouseEvent.MOUSE_RELEASED, System.currentTimeMillis(), 0, 0, 0,
+				1, false);
+		/*
+		 * if ((change == ValueChange.ROI || change == ValueChange.SIGMA ||
+		 * change == ValueChange.MINMAX || change == ValueChange.SLICE || change
+		 * == ValueChange.THRESHOLD && RoisOrig != null)) {
+		 */
+		if (mev != null) {
+
 			roimanager.close();
-			
+
 			roimanager = new RoiManager();
-			
-		//}	
+
+			// }
 		}
 
 		for (final DifferenceOfGaussianPeak<FloatType> peak : peaks) {
@@ -595,26 +602,20 @@ public class InteractiveActiveContour implements PlugIn {
 		isComputing = false;
 	}
 
-	
-	
-	
 	protected class moveNextListener implements ActionListener {
 		@Override
 		public void actionPerformed(final ActionEvent arg0) {
 
 			// add listener to the imageplus slice slider
 			sliceObserver = new SliceObserver(imp, new ImagePlusListener());
-			
 
-					
 			imp.setSlice(imp.getFrame());
 			if (imp.getFrame() + 1 <= stacksize) {
 				imp.setSlice(imp.getFrame() + 1);
-			} 
-			else{
+			} else {
 				IJ.log("Max frame number exceeded, moving to last frame instead");
-				imp.setSlice(stacksize );
-				currentslice = stacksize ;
+				imp.setSlice(stacksize);
+				currentslice = stacksize;
 			}
 			currentslice = imp.getFrame();
 
@@ -634,8 +635,6 @@ public class InteractiveActiveContour implements PlugIn {
 			// copy the ImagePlus into an ArrayImage<FloatType> for faster
 			// access
 			source = convertToFloat(imp, channel, currentslice - 1, minIntensityImage, maxIntensityImage);
-
-			
 
 			updatePreview(ValueChange.SLICE);
 			isStarted = true;
@@ -681,17 +680,16 @@ public class InteractiveActiveContour implements PlugIn {
 			if (dialog) {
 				// add listener to the imageplus slice slider
 				sliceObserver = new SliceObserver(imp, new ImagePlusListener());
-				
+
 				imp.setSlice(imp.getFrame());
-				
+
 				if (currentslice <= stacksize) {
 					imp.setSlice(currentslice);
-				} else{
+				} else {
 					IJ.log("Max frame number exceeded, moving to last frame instead");
-					imp.setSlice(stacksize );
-					currentslice = stacksize ;
+					imp.setSlice(stacksize);
+					currentslice = stacksize;
 				}
-					
 
 				if (imp.getType() == ImagePlus.COLOR_RGB || imp.getType() == ImagePlus.COLOR_256) {
 					IJ.log("Color images are not supported, please convert to 8, 16 or 32-bit grayscale");
@@ -711,8 +709,6 @@ public class InteractiveActiveContour implements PlugIn {
 				// access
 				source = convertToFloat(imp, channel, currentslice - 1, minIntensityImage, maxIntensityImage);
 
-				
-
 				// compute first version
 				updatePreview(ValueChange.SLICE);
 				isStarted = true;
@@ -723,7 +719,7 @@ public class InteractiveActiveContour implements PlugIn {
 
 				ImagePlus newimp = new ImagePlus("Currentslice " + currentslice,
 						imp.getImageStack().getProcessor(currentslice).duplicate());
-			
+
 				final Rectangle rect = roi.getBounds();
 
 				for (final DifferenceOfGaussianPeak<FloatType> peak : peaks) {
@@ -751,20 +747,20 @@ public class InteractiveActiveContour implements PlugIn {
 			}
 		}
 	}
+
 	protected class moveAllListener implements ActionListener {
 		@Override
 		public void actionPerformed(final ActionEvent arg0) {
 
 			// add listener to the imageplus slice slider
 			sliceObserver = new SliceObserver(imp, new ImagePlusListener());
-			
 
 			boolean dialog = Dialoguesec();
-					
+
 			imp.setSlice(imp.getFrame());
 			Intensityimp.setSlice(imp.getSlice());
 			int next = imp.getFrame();
-			for (int index = next; index <= stacksize; ++index){
+			for (int index = next; index <= stacksize; ++index) {
 				imp.setSlice(index);
 				currentslice = imp.getFrame();
 				Intensityimp.setSlice(imp.getSlice());
@@ -774,106 +770,97 @@ public class InteractiveActiveContour implements PlugIn {
 						Intensityimp.getImageStack().getProcessor(currentslice).duplicate());
 				Roi roi = imp.getRoi();
 				final Rectangle rect = roi.getBounds();
-				InteractiveSnake snake = new InteractiveSnake(newimp,Intensitynewimp, currentslice);
-			
+				InteractiveSnake snake = new InteractiveSnake(newimp, Intensitynewimp, currentslice);
 
-			
-			RoiManager manager = RoiManager.getInstance();
-			if (manager != null) {
-				manager.getRoisAsArray();
-			}
-			    
-			// copy the ImagePlus into an ArrayImage<FloatType> for faster
-			// access
-			source = convertToFloat(imp, channel, currentslice - 1, minIntensityImage, maxIntensityImage);
+				RoiManager manager = RoiManager.getInstance();
+				if (manager != null) {
+					manager.getRoisAsArray();
+				}
 
-			
-			updatePreview(ValueChange.SLICE);
-			
-   
-			
+				// copy the ImagePlus into an ArrayImage<FloatType> for faster
+				// access
+				source = convertToFloat(imp, channel, currentslice - 1, minIntensityImage, maxIntensityImage);
 
-			isStarted = true;
+				updatePreview(ValueChange.SLICE);
 
-			// check whenever roi is modified to update accordingly
-			roiListener = new RoiListener();
-			imp.getCanvas().addMouseListener(roiListener);
+				isStarted = true;
 
-			
+				// check whenever roi is modified to update accordingly
+				roiListener = new RoiListener();
+				imp.getCanvas().addMouseListener(roiListener);
 
-			for (final DifferenceOfGaussianPeak<FloatType> peak : peaks) {
-				if ((peak.isMax() && lookForMaxima) || (peak.isMin() && lookForMinima)) {
-					final float x = peak.getPosition(0);
-					final float y = peak.getPosition(1);
+				for (final DifferenceOfGaussianPeak<FloatType> peak : peaks) {
+					if ((peak.isMax() && lookForMaxima) || (peak.isMin() && lookForMinima)) {
+						final float x = peak.getPosition(0);
+						final float y = peak.getPosition(1);
 
-					if (Math.abs(peak.getValue().get()) > threshold && x >= extraSize / 2 && y >= extraSize / 2
-							&& x < rect.width + extraSize / 2 && y < rect.height + extraSize / 2) {
-						final OvalRoi or = new OvalRoi(Util.round(x - sigma) + rect.x - extraSize / 2,
-								Util.round(y - sigma) + rect.y - extraSize / 2, Util.round(sigma + sigma2),
-								Util.round(sigma + sigma2));
+						if (Math.abs(peak.getValue().get()) > threshold && x >= extraSize / 2 && y >= extraSize / 2
+								&& x < rect.width + extraSize / 2 && y < rect.height + extraSize / 2) {
+							final OvalRoi or = new OvalRoi(Util.round(x - sigma) + rect.x - extraSize / 2,
+									Util.round(y - sigma) + rect.y - extraSize / 2, Util.round(sigma + sigma2),
+									Util.round(sigma + sigma2));
 
-						if (peak.isMax())
-							or.setStrokeColor(Color.red);
-						else if (peak.isMin())
-							or.setStrokeColor(Color.green);
+							if (peak.isMax())
+								or.setStrokeColor(Color.red);
+							else if (peak.isMin())
+								or.setStrokeColor(Color.green);
 
-						newimp.setRoi(or);
+							newimp.setRoi(or);
 
+						}
+
+					}
+				}
+				ImageProcessor ip = newimp.getProcessor();
+
+				if (Auto) {
+					if (index > next)
+						snake.Auto = true;
+				}
+				snake.run(ip);
+
+				ImageStack currentimg = snake.getResult();
+				new ImagePlus("Snake Roi's for slice:" + currentslice, currentimg).show();
+				ArrayList<SnakeObject> currentsnakes = snake.getRoiList();
+
+				if (AllFrameSnakes != null) {
+
+					for (int Listindex = 0; Listindex < AllFrameSnakes.size(); ++Listindex) {
+
+						SnakeObject SnakeFrame = AllFrameSnakes.get(Listindex).get(0);
+						int Frame = SnakeFrame.Framenumber;
+
+						if (Frame == currentslice) {
+							AllFrameSnakes.remove(Listindex);
+
+						}
 					}
 
 				}
-			}
-     ImageProcessor ip = newimp.getProcessor();
-     
-     if (Auto){
-     if (index > next)
-			snake.Auto = true;
-     }
-			snake.run(ip);
-			
-			ImageStack currentimg = snake.getResult();
-			new ImagePlus("Snake Roi's for slice:" + currentslice, currentimg).show();
-			ArrayList<SnakeObject> currentsnakes = snake.getRoiList();
-			
 
-			if (AllFrameSnakes!= null){
+				AllFrameSnakes.add(currentsnakes);
+				IJ.log(" Size of List for tracker: " + AllFrameSnakes.size());
+				if (snake.saveIntensity) {
 
-				for (int Listindex = 0; Listindex < AllFrameSnakes.size(); ++Listindex){
-					
-					SnakeObject SnakeFrame = AllFrameSnakes.get(Listindex).get(0);
-					int Frame = SnakeFrame.Framenumber;
-					
-					if (Frame == currentslice){
-						AllFrameSnakes.remove(Listindex);
-						
+					snake.writeIntensities(usefolder + "//" + addToName + "-z", currentslice, currentsnakes);
+
+				}
+				RoiEncoder saveRoi;
+				if (snake.saverois) {
+					for (int indexs = 0; indexs < currentsnakes.size(); ++indexs) {
+						Roi roiToSave = currentsnakes.get(indexs).roi;
+						int roiindex = currentsnakes.get(indexs).Label;
+						saveRoi = new RoiEncoder(
+								usefolder + "//" + "Roi" + addToName + roiindex + "-z" + currentslice + ".roi");
+						try {
+							saveRoi.write(roiToSave);
+						} catch (IOException e) {
+							e.printStackTrace();
+						}
 					}
 				}
-				
-				
-				}
-			
-			AllFrameSnakes.add(currentsnakes);
-			IJ.log(" Size of List for tracker: " + AllFrameSnakes.size());
-			if (snake.saveIntensity) {
-
-				snake.writeIntensities(usefolder + "//" + addToName + "-z", currentslice, currentsnakes);
-
 			}
-			 RoiEncoder saveRoi;
-			if (snake.saverois){
-				for (int indexs = 0; indexs < currentsnakes.size(); ++ indexs){
-				Roi roiToSave = currentsnakes.get(indexs).roi;	
-				int roiindex = currentsnakes.get(indexs).Label;
-				saveRoi = new RoiEncoder(usefolder + "//" + "Roi" + addToName + roiindex +"-z" + currentslice + ".roi");
-                try {
-					saveRoi.write(roiToSave);
-				} catch (IOException e) {
-					e.printStackTrace();
-				}
-				}
-			}
-		}
-			
+
 		}
 	}
 
@@ -887,7 +874,7 @@ public class InteractiveActiveContour implements PlugIn {
 					Intensityimp.getImageStack().getProcessor(currentslice).duplicate());
 			Roi roi = imp.getRoi();
 			final Rectangle rect = roi.getBounds();
-			InteractiveSnake snake = new InteractiveSnake(newimp,Intensitynewimp, currentslice);
+			InteractiveSnake snake = new InteractiveSnake(newimp, Intensitynewimp, currentslice);
 
 			for (final DifferenceOfGaussianPeak<FloatType> peak : peaks) {
 				if ((peak.isMax() && lookForMaxima) || (peak.isMin() && lookForMinima)) {
@@ -913,31 +900,26 @@ public class InteractiveActiveContour implements PlugIn {
 			}
 
 			ImageProcessor ip = newimp.getProcessor();
-			
+
 			snake.run(ip);
 			ImageStack currentimg = snake.getResult();
 			new ImagePlus("Snake Roi's for slice:" + currentslice, currentimg).show();
 			ArrayList<SnakeObject> currentsnakes = snake.getRoiList();
-			if (AllFrameSnakes!= null){
-				
-				
-					
-					for (int Listindex = 0; Listindex < AllFrameSnakes.size(); ++Listindex){
-					
+			if (AllFrameSnakes != null) {
+
+				for (int Listindex = 0; Listindex < AllFrameSnakes.size(); ++Listindex) {
+
 					SnakeObject SnakeFrame = AllFrameSnakes.get(Listindex).get(0);
 					int Frame = SnakeFrame.Framenumber;
-					
-					if (Frame == currentslice){
+
+					if (Frame == currentslice) {
 						AllFrameSnakes.remove(Listindex);
-						
+
 					}
-					}
-				
-				
 				}
-			
-			
-			
+
+			}
+
 			AllFrameSnakes.add(currentsnakes);
 			IJ.log("Size of list for tracker " + AllFrameSnakes.size());
 			if (snake.saveIntensity) {
@@ -945,17 +927,18 @@ public class InteractiveActiveContour implements PlugIn {
 				snake.writeIntensities(usefolder + "//" + addToName + "-z", currentslice, currentsnakes);
 
 			}
-			 RoiEncoder saveRoi;
-			if (snake.saverois){
-				for (int index = 0; index < currentsnakes.size(); ++ index){
-				Roi roiToSave = currentsnakes.get(index).roi;	
-				int roiindex = currentsnakes.get(index).Label;
-				saveRoi = new RoiEncoder(usefolder + "//" + "Roi" + addToName + roiindex +"-z" + currentslice + ".roi");
-                try {
-					saveRoi.write(roiToSave);
-				} catch (IOException e) {
-					e.printStackTrace();
-				}
+			RoiEncoder saveRoi;
+			if (snake.saverois) {
+				for (int index = 0; index < currentsnakes.size(); ++index) {
+					Roi roiToSave = currentsnakes.get(index).roi;
+					int roiindex = currentsnakes.get(index).Label;
+					saveRoi = new RoiEncoder(
+							usefolder + "//" + "Roi" + addToName + roiindex + "-z" + currentslice + ".roi");
+					try {
+						saveRoi.write(roiToSave);
+					} catch (IOException e) {
+						e.printStackTrace();
+					}
 				}
 			}
 
@@ -1124,7 +1107,7 @@ public class InteractiveActiveContour implements PlugIn {
 		/* Instantiation */
 		final GridBagLayout layout = new GridBagLayout();
 		final GridBagConstraints c = new GridBagConstraints();
-
+		final Label DogText = new Label("Use DoG to find Blobs ", Label.CENTER);
 		final Scrollbar sigma1 = new Scrollbar(Scrollbar.HORIZONTAL, sigmaInit, 10, 0, 10 + scrollbarSize);
 		this.sigma = computeValueFromScrollbarPosition(sigmaInit, sigmaMin, sigmaMax, scrollbarSize);
 
@@ -1143,7 +1126,6 @@ public class InteractiveActiveContour implements PlugIn {
 
 		final Label thresholdText = new Label("Threshold = " + this.threshold, Label.CENTER);
 
-		 
 		final Button button = new Button("Start Tracking");
 		final Button cancel = new Button("Cancel");
 		final Button snakes = new Button("Apply snakes to current Frame selection");
@@ -1162,6 +1144,10 @@ public class InteractiveActiveContour implements PlugIn {
 		c.gridx = 0;
 		c.gridy = 0;
 		c.weightx = 1;
+
+		frame.add(DogText, c);
+
+		++c.gridy;
 		frame.add(sigma1, c);
 
 		++c.gridy;
@@ -1200,20 +1186,18 @@ public class InteractiveActiveContour implements PlugIn {
 		++c.gridy;
 		c.insets = new Insets(0, 175, 0, 175);
 		frame.add(JumpFrame, c);
-		
+
 		++c.gridy;
 		c.insets = new Insets(10, 120, 10, 120);
 		frame.add(snakes, c);
-	
+
 		++c.gridy;
 		c.insets = new Insets(0, 145, 0, 95);
 		frame.add(Auto, c);
-		
+
 		++c.gridy;
 		c.insets = new Insets(0, 145, 0, 145);
 		frame.add(ApplytoStack, c);
-		
-		
 
 		++c.gridy;
 		c.insets = new Insets(10, 175, 0, 175);
@@ -1233,7 +1217,7 @@ public class InteractiveActiveContour implements PlugIn {
 		snakes.addActionListener(new snakeButtonListener());
 		moveNextListener.addActionListener(new moveNextListener());
 		JumpFrame.addActionListener(new moveToFrameListener());
-		ApplytoStack.addActionListener(new moveAllListener() );
+		ApplytoStack.addActionListener(new moveAllListener());
 		min.addItemListener(new MinListener());
 		max.addItemListener(new MaxListener());
 		Auto.addItemListener(new AutoListener());
@@ -1294,7 +1278,6 @@ public class InteractiveActiveContour implements PlugIn {
 		}
 	}
 
-	
 	protected class AutoListener implements ItemListener {
 		@Override
 		public void itemStateChanged(final ItemEvent arg0) {
@@ -1304,9 +1287,9 @@ public class InteractiveActiveContour implements PlugIn {
 			else if (arg0.getStateChange() == ItemEvent.SELECTED)
 				Auto = true;
 
-			
 		}
 	}
+
 	protected class MaxListener implements ItemListener {
 		@Override
 		public void itemStateChanged(final ItemEvent arg0) {
@@ -1322,8 +1305,7 @@ public class InteractiveActiveContour implements PlugIn {
 					SimpleMultiThreading.threadWait(10);
 
 				updatePreview(ValueChange.MINMAX);
-				
-				
+
 			}
 		}
 	}
@@ -1366,89 +1348,177 @@ public class InteractiveActiveContour implements PlugIn {
 
 	}
 
-
 	protected class TrackerButtonListener implements ActionListener {
 		final Frame parent;
+
 		public TrackerButtonListener(Frame parent) {
 			this.parent = parent;
 		}
-		public void actionPerformed(final ActionEvent arg0) {
-			
-			
-			File fichier = new File(addToName + "All" + ".txt");
-	         try {
-				FileWriter fw = new FileWriter(fichier);
-				 BufferedWriter bw = new BufferedWriter(fw);
-				
-			File folder = new File(usefolder); 
-			File[] files = folder.listFiles();
-			
-		HashMap<Integer, File> filesmap = new HashMap<Integer, File>();
-		
-		for (int i = 0 ; i < files.length; ++i	){
-			File file = files[i];
-			 if (file.isFile() && file.getName().contains(addToName)) {
-				 
-				 filesmap.put(i, file);
-			 }
-			
-		}
-         IJ.log("Total files to be combined:" + filesmap.size());
-		  // create your iterator for your map
-	    Iterator<Entry<Integer, File>> it = filesmap.entrySet().iterator();
-	    
-	    while (it.hasNext() ) {
 
-	        // the key/value pair is stored here in pairs
-	        Map.Entry<Integer, File> pairs = it.next();
-	        int c;
-	    	FileInputStream  in = new FileInputStream(pairs.getValue());
-	    	while ((c = in.read()) != -1) {
-	    		
-	            bw.write(c);
-	    	}	        
-	    }
-	
-			 bw.close();
-	         fw.close();
-	         IJ.log("Compiled the Object properties for all frames in the folder:" + usefolder );
-	         }
-	        
-			catch (IOException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
+		public void actionPerformed(final ActionEvent arg0) {
+
+			File fichier = new File(addToName + "All" + ".txt");
+			try {
+				FileWriter fw = new FileWriter(fichier);
+				BufferedWriter bw = new BufferedWriter(fw);
+
+				File folder = new File(usefolder);
+				File[] files = folder.listFiles();
+
+				HashMap<Integer, File> filesmap = new HashMap<Integer, File>();
+
+				for (int i = 0; i < files.length; ++i) {
+					File file = files[i];
+					if (file.isFile() && file.getName().contains(addToName)) {
+
+						filesmap.put(i, file);
+					}
+
 				}
-	         
-	        
-	        IJ.log("Start Tracking");
-	      
-	        boolean dialog = DialogueTracker();
-	        if (dialog){
+				IJ.log("Total files to be combined:" + filesmap.size());
+				// create your iterator for your map
+				Iterator<Entry<Integer, File>> it = filesmap.entrySet().iterator();
+
+				while (it.hasNext()) {
+
+					// the key/value pair is stored here in pairs
+					Map.Entry<Integer, File> pairs = it.next();
+					int c;
+					FileInputStream in = new FileInputStream(pairs.getValue());
+					while ((c = in.read()) != -1) {
+
+						bw.write(c);
+					}
+				}
+
+				bw.close();
+				fw.close();
+				IJ.log("Compiled the Object properties for all frames in the folder:" + usefolder);
+			}
+
+			catch (IOException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+
+			IJ.log("Start Tracking");
+
+			boolean dialog = DialogueTracker();
+			if (dialog) {
+
+				blobtracker.process();
+
+				SimpleWeightedGraph<SnakeObject, DefaultWeightedEdge> graph = blobtracker.getResult();
+
+				IJ.log("Tracking Complete " + " " + "Displaying results");
+
+				DisplayGraph totaldisplaytracks = new DisplayGraph(impcopy, graph, colorDraw);
+				totaldisplaytracks.getImp();
+				
+				TrackModel model = new TrackModel(graph) ;
+				
+				
+				
+				// Get all the track id's
+				for ( final Integer id : model.trackIDs( true ) )
+				{
+				   
+					// Get the corresponding set for each id
+					
+					final HashSet<SnakeObject> Snakeset = model.trackSnakeObjects(id);
+					ArrayList<SnakeObject> list = new ArrayList<SnakeObject>(Snakeset);
+					Comparator<SnakeObject> Framecomparison = new Comparator<SnakeObject>(){
+							
+							@Override
+					       public int compare(final SnakeObject A, final SnakeObject B){
+							
+								int FramenumberA = A.Framenumber;
+								int FramenumberB = B.Framenumber;
+								
+								if (FramenumberA > FramenumberB)
+								
+								return A.compareTo(B);
+								
+								else
+								return B.compareTo(A);
+							
+						}
+
+						
+							
+							
+						};
+	
+				Collections.sort(list, Framecomparison);
+						
+					Iterator<SnakeObject> Snakeiter = Snakeset.iterator();
+					
+					// Write tracks with same track id to file
+					try {
+				        File fichiertrack = new File(usefolder + "//" + addTrackToName   + id + ".txt");
+				        FileWriter fwtr = new FileWriter(fichiertrack);
+				        BufferedWriter bwtr = new BufferedWriter(fwtr);
+				        NumberFormat nf = NumberFormat.getInstance(Locale.ENGLISH);
+					    nf.setMaximumFractionDigits(3);
+			bwtr.write("\tFramenumber\tTrackID\tCenterofMassX\tCenterofMassY\tIntensityCherry\tIntensityBio\n");
+
+					while(Snakeiter.hasNext()){
+						
+						
+						SnakeObject currentsnake = Snakeiter.next();
+       
+				       		
+				            bwtr.write("\t" + currentsnake.Framenumber + "\t" + "\t" + id  
+				           		 + "\t" +"\t" + nf.format(currentsnake.centreofMass[0]) + "\t" +"\t" 
+				        + nf.format(currentsnake.centreofMass[1]) + "\t" +"\t" 
+				           		 + nf.format(currentsnake.IntensityCherry) +"\t" +"\t"
+				                   		 + nf.format(currentsnake.IntensityBio) + "\n");
+				        
+				        
+				    					
+				}
+				      
+								
+							    bwtr.close();
+						        fwtr.close();
+						    } catch (IOException e) {
+						    }	
+				
+				}
+			}
+
+		}
+
+	}
 	 
-	    
-	    blobtracker.process();
-	   
-		SimpleWeightedGraph<SnakeObject, DefaultWeightedEdge> graph = blobtracker.getResult();
-		
-		
-		 
-		 IJ.log("Tracking Complete " + " " + "Displaying results");
-		
-        
-		DisplayGraph totaldisplaytracks = new DisplayGraph(impcopy, graph, colorDraw);
-		totaldisplaytracks.getImp();
-	        }
-	    
-		}
-		
-		}
+	 public static void writeTracks(String nom, int Framenumber, int Trackid,SnakeObject currentsnake) {
+	     NumberFormat nf = NumberFormat.getInstance(Locale.ENGLISH);
+	     nf.setMaximumFractionDigits(3);
+	     try {
+	         File fichier = new File(nom + Trackid + ".txt");
+	         FileWriter fw = new FileWriter(fichier);
+	         BufferedWriter bw = new BufferedWriter(fw);
+	         bw.write("\tFramenumber\tTrackID\tCenterofMassX\tCenterofMassY\tIntensityCherry\tIntensityBio\n");
+	       
+	        	
+	        		
+	             bw.write("\t" + Framenumber + "\t" + "\t" + Trackid  
+	            		 + "\t" +"\t" + nf.format(currentsnake.centreofMass[0]) + "\t" +"\t" 
+	         + nf.format(currentsnake.centreofMass[1]) + "\t" +"\t" 
+	            		 + nf.format(currentsnake.IntensityCherry) +"\t" +"\t"
+	                    		 + nf.format(currentsnake.IntensityBio) + "\n");
+	         
+	         
+	         bw.close();
+	         fw.close();
+	     } catch (IOException e) {
+	     }
+	 }
 	protected class CancelButtonListener implements ActionListener {
 		final Frame parent;
 		final boolean cancel;
-		
-		
-		
-		//usefolder + "//" + "StaticPropertieszStack" + "-z", currentslice
+
+		// usefolder + "//" + "StaticPropertieszStack" + "-z", currentslice
 		public CancelButtonListener(Frame parent, final boolean cancel) {
 			this.parent = parent;
 			this.cancel = cancel;
@@ -1645,8 +1715,6 @@ public class InteractiveActiveContour implements PlugIn {
 		Intensityimp.show();
 		IJ.run("16-bit");
 		final ImagePlus currentIntensityimp = IJ.getImage();
-		
-		
 
 		new InteractiveActiveContour(currentimp, currentIntensityimp).run(null);
 

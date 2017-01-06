@@ -9,6 +9,7 @@ package mpicbg.spim.segmentation;
 	    @Override
 	    public void run(String arg) {
 	        // dialog
+	    	 // dialog
 	        GenericDialog gd = new GenericDialog("Snake Advanced", IJ.getInstance());
 	        gd.addNumericField("Distance_Search", Prefs.get("ABSnake_DistSearch.int", 100), 0);
 	        gd.addNumericField("Displacement_min", Prefs.get("ABSnake_DisplMin.double", 0.1), 2);
