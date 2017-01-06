@@ -65,6 +65,7 @@ import org.jgrapht.graph.SimpleWeightedGraph;
 import blobObjects.FramedBlob;
 import blobObjects.Subgraphs;
 import costMatrix.CostFunction;
+import costMatrix.IntensityDiffCostFunction;
 import costMatrix.SquareDistCostFunction;
 import mpicbg.imglib.algorithm.MultiThreaded;
 import mpicbg.imglib.algorithm.MultiThreadedAlgorithm;
@@ -97,7 +98,9 @@ import net.imglib2.view.Views;
 import overlaytrack.DisplayGraph;
 import overlaytrack.DisplaysubGraph;
 import spim.process.fusion.FusionHelper;
+import trackerType.BlobTracker;
 import trackerType.KFsearch;
+import trackerType.NNsearch;
 
 /**
  * An interactive tool for getting Intensity in ROI's using Active Contour
@@ -139,7 +142,7 @@ public class InteractiveActiveContour implements PlugIn {
 	double maxIntensityImage = Double.NaN;
 	String usefolder = IJ.getDirectory("imagej");
 	String addToName = "StaticPropertieszStackwBio";
-	 Color colorDraw = Color.RED;
+	 Color colorDraw = null;
 	
 	SliceObserver sliceObserver;
 	RoiListener roiListener;
@@ -173,6 +176,9 @@ public class InteractiveActiveContour implements PlugIn {
 	boolean Auto = false;
 	boolean lookForMaxima = true;
 	ImagePlus impcopy;
+	BlobTracker blobtracker; 
+	 CostFunction<SnakeObject, SnakeObject> UserchosenCostFunction;
+	  //= new SquareDistCostFunction();
 	ArrayList<ArrayList<SnakeObject>> AllFrameSnakes;
 	public static enum ValueChange {
 		SIGMA, THRESHOLD, SLICE, ROI, MINMAX, ALL
@@ -365,9 +371,16 @@ public class InteractiveActiveContour implements PlugIn {
 		
 		
 		 String[] colors = {"Red", "Green", "Blue", "Cyan", "Magenta", "Yellow", "Black", "White"};
+		 String[] whichtracker = {"Kalman (recommended)", "Nearest Neighbour"};
+		 String[] whichcost = {"Distance based", "Intensity based"};
 		 int indexcol = 0;
+		 int trackertype = 0;
+		 int functiontype = 0;
+		 
 		 // Create dialog
 		    GenericDialog gd = new GenericDialog("Tracker");
+		    gd.addChoice("Choose your tracker :", whichtracker, whichtracker[trackertype]);
+		    gd.addChoice("Choose your Cost function (for Kalman) :", whichcost, whichcost[functiontype]);
 			gd.addNumericField("Initial Search Radius", 10, 0);
 			gd.addNumericField("Max Movment of Blobs per frame", 15, 0);
 			gd.addNumericField("Blobs allowed to be lost for #frames", 20, 0);
@@ -377,9 +390,39 @@ public class InteractiveActiveContour implements PlugIn {
 
 		gd.showDialog();
 		
+	
 			initialSearchradius = (int) gd.getNextNumber();
 			maxSearchradius = (int) gd.getNextNumber();
             missedframes = (int) gd.getNextNumber();
+        	// Choice of tracker
+            trackertype = gd.getNextChoiceIndex();
+    		switch (trackertype){
+    		case 0:
+    			functiontype = gd.getNextChoiceIndex();
+              switch(functiontype){
+    			
+    			case 0:
+    				UserchosenCostFunction = new SquareDistCostFunction();
+    			break;
+    			
+    			case 1:
+    				UserchosenCostFunction = new IntensityDiffCostFunction();
+    			break;
+    			
+    			default:
+    				UserchosenCostFunction = new SquareDistCostFunction();
+    				
+    			
+    			}
+    			blobtracker =  new KFsearch(AllFrameSnakes, UserchosenCostFunction,
+    					maxSearchradius, initialSearchradius, stacksize, missedframes);
+    			break;
+    		case 1:
+    			blobtracker =  new NNsearch(AllFrameSnakes, maxSearchradius, stacksize);
+    			break;
+    		
+    		}    
+    		
          // color choice of display
             indexcol = gd.getNextChoiceIndex();
             switch (indexcol) {
@@ -507,12 +550,21 @@ public class InteractiveActiveContour implements PlugIn {
 		}
 
 		Roi[] RoisOrig = roimanager.getRoisAsArray();
-
-		if (change == ValueChange.ROI || change == ValueChange.SIGMA || change == ValueChange.MINMAX
-				|| change == ValueChange.SLICE || change == ValueChange.THRESHOLD && RoisOrig != null) {
-
+		
+		
+		
+		MouseEvent mev = new MouseEvent(imp.getCanvas(), MouseEvent.MOUSE_RELEASED,
+				System.currentTimeMillis(), 0, 0, 0, 1, false);
+		/*if ((change == ValueChange.ROI || change == ValueChange.SIGMA || change == ValueChange.MINMAX
+				|| change == ValueChange.SLICE || change == ValueChange.THRESHOLD && RoisOrig != null)
+         && mev!= null) {*/
+		if (mev!= null){
+		
 			roimanager.close();
+			
 			roimanager = new RoiManager();
+			
+		//}	
 		}
 
 		for (final DifferenceOfGaussianPeak<FloatType> peak : peaks) {
@@ -542,108 +594,8 @@ public class InteractiveActiveContour implements PlugIn {
 
 		isComputing = false;
 	}
-
-	/**
-	 * Updates the Preview with the current parameters (sigma, threshold, roi,
-	 * slicenumber)
-	 * The roi manager simply adds all the Rois with change in frame and 
-	 * not removes the previous one, use for automatic detection
-	 * @param change
-	 *            - what did change
-	 */
-
-	protected void updatePreviewNotRoi(final ValueChange change) {
 
 	
-		Roi roi = imp.getRoi();
-		
-		final Rectangle rect = roi.getBounds();
-		
-
-		// compute the Difference Of Gaussian if necessary
-		if (peaks == null || change == ValueChange.SIGMA || change == ValueChange.SLICE
-				|| change == ValueChange.ALL) {
-			//
-			// Compute the Sigmas for the gaussian folding
-			//
-
-			final float k, K_MIN1_INV;
-			final float[] sigma, sigmaDiff;
-
-			if (enableSigma2) {
-				sigma = new float[2];
-				sigma[0] = this.sigma;
-				sigma[1] = this.sigma2;
-				k = sigma[1] / sigma[0];
-				K_MIN1_INV = DetectionSegmentation.computeKWeight(k);
-				sigmaDiff = DetectionSegmentation.computeSigmaDiff(sigma, imageSigma);
-			} else {
-				k = (float) DetectionSegmentation.computeK(sensitivity);
-				K_MIN1_INV = DetectionSegmentation.computeKWeight(k);
-				sigma = DetectionSegmentation.computeSigma(k, this.sigma);
-				sigmaDiff = DetectionSegmentation.computeSigmaDiff(sigma, imageSigma);
-			}
-
-			// the upper boundary
-			this.sigma2 = sigma[1];
-
-			final DifferenceOfGaussianReal1<FloatType> dog = new DifferenceOfGaussianReal1<FloatType>(img,
-					new OutOfBoundsStrategyValueFactory<FloatType>(), sigmaDiff[0], sigmaDiff[1], thresholdMin / 4,
-					K_MIN1_INV);
-			dog.setKeepDoGImage(true);
-			dog.process();
-
-			final SubpixelLocalization<FloatType> subpixel = new SubpixelLocalization<FloatType>(dog.getDoGImage(),
-					dog.getPeaks());
-			subpixel.process();
-
-			peaks = dog.getPeaks();
-			
-		}
-
-		
-		// extract peaks to show
-		Overlay o = imp.getOverlay();
-
-		if (o == null) {
-			o = new Overlay();
-			imp.setOverlay(o);
-		}
-
-		o.clear();
-
-		 RoiManager roimanager = RoiManager.getInstance();
-
-		
-
-		for (final DifferenceOfGaussianPeak<FloatType> peak : peaks) {
-			if ((peak.isMax() && lookForMaxima) || (peak.isMin() && lookForMinima)) {
-				final float x = peak.getPosition(0);
-				final float y = peak.getPosition(1);
-				if (Math.abs(peak.getValue().get()) > threshold && x >= extraSize / 2 && y >= extraSize / 2
-						&& x < rect.width + extraSize / 2 && y < rect.height + extraSize / 2) {
-					final OvalRoi or = new OvalRoi(Util.round(x - sigma) + rect.x - extraSize / 2,
-							Util.round(y - sigma) + rect.y - extraSize / 2, Util.round(sigma + sigma2),
-							Util.round(sigma + sigma2));
-
-					if (peak.isMax())
-						or.setStrokeColor(Color.red);
-					else if (peak.isMin())
-						or.setStrokeColor(Color.green);
-
-					o.add(or);
-					roimanager.addRoi(or);
-
-				}
-
-			}
-		}
-
-		imp.updateAndDraw();
-
-		isComputing = false;
-	}
-
 	
 	
 	protected class moveNextListener implements ActionListener {
@@ -691,7 +643,6 @@ public class InteractiveActiveContour implements PlugIn {
 			// check whenever roi is modified to update accordingly
 			roiListener = new RoiListener();
 			imp.getCanvas().addMouseListener(roiListener);
-
 			ImagePlus newimp = new ImagePlus("Currentslice " + currentslice,
 					imp.getImageStack().getProcessor(currentslice).duplicate());
 			final Rectangle rect = roi.getBounds();
@@ -1167,7 +1118,7 @@ public class InteractiveActiveContour implements PlugIn {
 	 */
 
 	protected void displaySliders() {
-		final Frame frame = new Frame("Adjust Difference-of-Gaussian Values");
+		final Frame frame = new Frame("Find Blobs and Track");
 		frame.setSize(550, 550);
 
 		/* Instantiation */
@@ -1243,33 +1194,33 @@ public class InteractiveActiveContour implements PlugIn {
 		frame.add(max, c);
 
 		++c.gridy;
-		c.insets = new Insets(10, 75, 10, 75);
+		c.insets = new Insets(10, 175, 10, 175);
 		frame.add(moveNextListener, c);
 
 		++c.gridy;
-		c.insets = new Insets(0, 100, 0, 100);
+		c.insets = new Insets(0, 175, 0, 175);
 		frame.add(JumpFrame, c);
 		
 		++c.gridy;
-		c.insets = new Insets(10, 100, 10, 100);
+		c.insets = new Insets(10, 120, 10, 120);
 		frame.add(snakes, c);
 	
 		++c.gridy;
-		c.insets = new Insets(0, 170, 0, 75);
+		c.insets = new Insets(0, 145, 0, 95);
 		frame.add(Auto, c);
 		
 		++c.gridy;
-		c.insets = new Insets(0, 125, 0, 95);
+		c.insets = new Insets(0, 145, 0, 145);
 		frame.add(ApplytoStack, c);
 		
 		
 
 		++c.gridy;
-		c.insets = new Insets(10, 150, 0, 150);
+		c.insets = new Insets(10, 175, 0, 175);
 		frame.add(button, c);
 
 		++c.gridy;
-		c.insets = new Insets(10, 150, 0, 150);
+		c.insets = new Insets(10, 175, 0, 175);
 		frame.add(cancel, c);
 
 		/* Configuration */
@@ -1473,13 +1424,12 @@ public class InteractiveActiveContour implements PlugIn {
 	      
 	        boolean dialog = DialogueTracker();
 	        if (dialog){
-	   final CostFunction<SnakeObject, SnakeObject> DistCostFunction = new SquareDistCostFunction();
-	    KFsearch KFsimple = new KFsearch(AllFrameSnakes, DistCostFunction, initialSearchradius, maxSearchradius,
-				stacksize, missedframes);   
-	    KFsimple.process();
-	    ArrayList<Subgraphs> subgraph = KFsimple.getFramedgraph();
-		SimpleWeightedGraph<SnakeObject, DefaultWeightedEdge> graph = KFsimple.getResult();
-		ArrayList<FramedBlob> frameandblob = KFsimple.getFramelist();
+	 
+	    
+	    blobtracker.process();
+	   
+		SimpleWeightedGraph<SnakeObject, DefaultWeightedEdge> graph = blobtracker.getResult();
+		
 		
 		 
 		 IJ.log("Tracking Complete " + " " + "Displaying results");
