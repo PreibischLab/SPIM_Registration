@@ -842,7 +842,7 @@ public class InteractiveActiveContour implements PlugIn {
 				IJ.log(" Size of List for tracker: " + AllFrameSnakes.size());
 				if (snake.saveIntensity) {
 
-					snake.writeIntensities(usefolder + "//" + addToName + "-z", currentslice, currentsnakes);
+					writeIntensities(usefolder + "//" + addToName + "-z", currentslice, currentsnakes);
 
 				}
 				RoiEncoder saveRoi;
@@ -924,7 +924,7 @@ public class InteractiveActiveContour implements PlugIn {
 			IJ.log("Size of list for tracker " + AllFrameSnakes.size());
 			if (snake.saveIntensity) {
 
-				snake.writeIntensities(usefolder + "//" + addToName + "-z", currentslice, currentsnakes);
+				writeIntensities(usefolder + "//" + addToName + "-z", currentslice, currentsnakes);
 
 			}
 			RoiEncoder saveRoi;
@@ -951,7 +951,26 @@ public class InteractiveActiveContour implements PlugIn {
 
 		return sigma[1];
 	}
-
+	 public static void writeIntensities(String nom, int nb,ArrayList<SnakeObject> currentsnakes) {
+	     NumberFormat nf = NumberFormat.getInstance(Locale.ENGLISH);
+	     nf.setMaximumFractionDigits(3);
+	     try {
+	         File fichier = new File(nom + nb + ".txt");
+	         FileWriter fw = new FileWriter(fichier);
+	         BufferedWriter bw = new BufferedWriter(fw);
+	         bw.write("\tFramenumber\tRoiLabel\tCenterofMassX\tCenterofMassY\tIntensityCherry\tIntensityBio\n");
+	         for (int index = 0; index < currentsnakes.size(); ++index){
+	             bw.write("\t" + nb + "\t" + "\t" + currentsnakes.get(index).Label 
+	            		 + "\t" +"\t" + nf.format(currentsnakes.get(index).centreofMass[0]) + "\t" +"\t" 
+	         + nf.format(currentsnakes.get(index).centreofMass[1]) + "\t" +"\t" 
+	            		 + nf.format(currentsnakes.get(index).IntensityCherry)   +"\t" + "\t"
+	                    		 + nf.format(currentsnakes.get(index).IntensityBio)  +  "\n");
+	         }
+	         bw.close();
+	         fw.close();
+	     } catch (IOException e) {
+	     }
+	 }
 	/**
 	 * Extract the current 2d region of interest from the souce image
 	 * 
@@ -1356,7 +1375,7 @@ public class InteractiveActiveContour implements PlugIn {
 		}
 
 		public void actionPerformed(final ActionEvent arg0) {
-
+/*
 			File fichier = new File(addToName + "All" + ".txt");
 			try {
 				FileWriter fw = new FileWriter(fichier);
@@ -1364,7 +1383,7 @@ public class InteractiveActiveContour implements PlugIn {
 
 				File folder = new File(usefolder);
 				File[] files = folder.listFiles();
-
+                if (files!=null){
 				HashMap<Integer, File> filesmap = new HashMap<Integer, File>();
 
 				for (int i = 0; i < files.length; ++i) {
@@ -1395,12 +1414,12 @@ public class InteractiveActiveContour implements PlugIn {
 				fw.close();
 				IJ.log("Compiled the Object properties for all frames in the folder:" + usefolder);
 			}
-
+			}
 			catch (IOException e) {
 				// TODO Auto-generated catch block
 				e.printStackTrace();
 			}
-
+			*/
 			IJ.log("Start Tracking");
 
 			boolean dialog = DialogueTracker();
@@ -1416,7 +1435,7 @@ public class InteractiveActiveContour implements PlugIn {
 				totaldisplaytracks.getImp();
 				
 				TrackModel model = new TrackModel(graph) ;
-				
+				model.getDirectedNeighborIndex();
 				
 				
 				// Get all the track id's
@@ -1424,23 +1443,17 @@ public class InteractiveActiveContour implements PlugIn {
 				{
 				   
 					// Get the corresponding set for each id
+					model.setName(id, "Track" + id);
 					
 					final HashSet<SnakeObject> Snakeset = model.trackSnakeObjects(id);
-					ArrayList<SnakeObject> list = new ArrayList<SnakeObject>(Snakeset);
+					ArrayList<SnakeObject> list = new ArrayList<SnakeObject>();
 					Comparator<SnakeObject> Framecomparison = new Comparator<SnakeObject>(){
 							
 							@Override
 					       public int compare(final SnakeObject A, final SnakeObject B){
 							
-								int FramenumberA = A.Framenumber;
-								int FramenumberB = B.Framenumber;
 								
-								if (FramenumberA > FramenumberB)
-								
-								return A.compareTo(B);
-								
-								else
-								return B.compareTo(A);
+								return A.Framenumber - B.Framenumber;
 							
 						}
 
@@ -1449,7 +1462,7 @@ public class InteractiveActiveContour implements PlugIn {
 							
 						};
 	
-				Collections.sort(list, Framecomparison);
+				
 						
 					Iterator<SnakeObject> Snakeiter = Snakeset.iterator();
 					
@@ -1467,18 +1480,20 @@ public class InteractiveActiveContour implements PlugIn {
 						
 						SnakeObject currentsnake = Snakeiter.next();
        
-				       		
-				            bwtr.write("\t" + currentsnake.Framenumber + "\t" + "\t" + id  
-				           		 + "\t" +"\t" + nf.format(currentsnake.centreofMass[0]) + "\t" +"\t" 
-				        + nf.format(currentsnake.centreofMass[1]) + "\t" +"\t" 
-				           		 + nf.format(currentsnake.IntensityCherry) +"\t" +"\t"
-				                   		 + nf.format(currentsnake.IntensityBio) + "\n");
+				       		list.add(currentsnake);
+				           
 				        
 				        
 				    					
 				}
-				      
-								
+					Collections.sort(list, Framecomparison);
+					for (int index = 0; index < list.size(); ++index){
+					 bwtr.write("\t" + list.get(index).Framenumber + "\t" + "\t" + id  
+			           		 + "\t" +"\t" + nf.format(list.get(index).centreofMass[0]) + "\t" +"\t" 
+			        + nf.format(list.get(index).centreofMass[1]) + "\t" +"\t" 
+			           		 + nf.format(list.get(index).IntensityCherry) +"\t" +"\t"
+			                   		 + nf.format(list.get(index).IntensityBio) + "\n");
+					}
 							    bwtr.close();
 						        fwtr.close();
 						    } catch (IOException e) {

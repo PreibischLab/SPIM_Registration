@@ -96,11 +96,24 @@ import java.util.Locale;
       // threshold of edges
       int Gradthresh = 5;
       // how far to look for edges
-      int DistMAX = Prefs.getInt("ABSnake_DistSearch.int", 100);
+      int DistMAX = 100;
+      
+      double Displacement_min =  0.1;
+      double Displacement_max = 5.0;
+      double Threshold_dist_positive =  100;
+     double Threshold_dist_negative =  100;
+     double Inv_alpha_min = 0.1;
+      double Inv_alpha_max =  10.0;
+      double Reg_min = 1;
+      double Reg_max =  2;
+      double Mul_factor = 0.99;
+      
+      
+      
       // maximum displacement
-      double force = 2;
+      double force = 5;
       // regularization factors, min and max
-      double reg = 2;
+      double reg = 5;
       double regmin, regmax;
       // first and last slice to process
       int slice1, slice2;
@@ -127,6 +140,9 @@ import java.util.Locale;
        */
       public void run(ImageProcessor ip) {
     	  
+    	  
+    	  configDriver = new SnakeConfigDriver();
+          AdvancedParameters();
     	
           // original stack
     	  
@@ -146,7 +162,7 @@ import java.util.Locale;
           
             
             boolean dialog;
-           	
+            boolean dialogAdvanced;
             if (Auto)
             	dialog = false;
             else
@@ -174,16 +190,14 @@ import java.util.Locale;
           
           
          
-              configDriver = new SnakeConfigDriver();
-              AdvancedParameters();
+             
               
               if (advanced)
-            	  new ABSnake_AdvancedOptions().run(null);
-              // ?
+            	 dialogAdvanced = AdvancedDialog();
+             
               regmin = reg / 2.0;
               regmax = reg;
-              // ?
-              // init result
+             
               pile_resultat = new ImageStack(length, height, java.awt.image.ColorModel.getRGBdefault());
               Intensitypile_resultat = new ImageStack(length, height, java.awt.image.ColorModel.getRGBdefault());
               if (createsegimage) {
@@ -203,7 +217,6 @@ import java.util.Locale;
               ColorProcessor image;
               ImagePlus plus;
 
-              // NEW LOOP 15/12/2015
               Roi roi;
               ABSnake snake;
               ByteProcessor seg = null;
@@ -382,15 +395,51 @@ import java.util.Locale;
           return !gd.wasCanceled();
       }
 
+      
+      
+      
       /**
        * Dialog advanced
        *
        * @return dialog ok ?
        */
+      
+      private boolean AdvancedDialog(){
+    	  
+    		 // dialog
+	        GenericDialog gd = new GenericDialog("Snake Advanced");
+	        gd.addNumericField("Distance_Search", 100, 0);
+	        gd.addNumericField("Displacement_min",  0.1, 2);
+	        gd.addNumericField("Displacement_max", 5.0 , 2);
+	        gd.addNumericField("Threshold_dist_positive", 100, 0);
+	        gd.addNumericField("Threshold_dist_negative", 100, 0);
+	        gd.addNumericField("Inv_alpha_min",  0.1, 2);
+	        gd.addNumericField("Inv_alpha_max", 10.0, 2);
+	        gd.addNumericField("Reg_min", 1, 2);
+	        gd.addNumericField("Reg_max",  2, 2);
+	        gd.addNumericField("Mul_factor", 0.99, 4);
+	        // show dialog
+	        gd.showDialog();
+	        DistMAX =  (int) gd.getNextNumber();
+	        Displacement_min =  gd.getNextNumber();
+	        Displacement_max = gd.getNextNumber();
+	       Threshold_dist_positive = gd.getNextNumber();
+	        Threshold_dist_negative = gd.getNextNumber();
+	       Inv_alpha_min = gd.getNextNumber();
+	       Inv_alpha_max = gd.getNextNumber();
+	       Reg_min = gd.getNextNumber();
+	        Reg_max = gd.getNextNumber();
+	        Mul_factor = gd.getNextNumber();
+	       
+	        return !gd.wasCanceled();
+    	  
+    	  
+      }
+      
       private void AdvancedParameters() {
           // see advanced dialog class
-          configDriver.setMaxDisplacement(Prefs.get("ABSnake_DisplMin.double", 0.1), Prefs.get("ABSnake_DisplMax.double", 2.0));
-          configDriver.setInvAlphaD(Prefs.get("ABSnake_InvAlphaMin.double", 0.5), Prefs.get("ABSnake_InvAlphaMax.double", 2.0));
+          configDriver.setMaxDisplacement(Prefs.get("ABSnake_DisplMin.double", 0.1), Prefs.get("ABSnake_DisplMax.double", 5.0));
+          configDriver.setInvAlphaD(Prefs.get("ABSnake_InvAlphaMin.double", 0.1), Prefs.get("ABSnake_InvAlphaMax.double", 4.0));
           configDriver.setReg(Prefs.get("ABSnake_RegMin.double", 0.1), Prefs.get("ABSnake_RegMax.double", 2.0));
           configDriver.setStep(Prefs.get("ABSnake_MulFactor.double", 0.99));
       }
@@ -459,12 +508,7 @@ import java.util.Locale;
               // display of the snake
               if ((step > 0) && ((i % step) == 0)) {
                   IJ.showStatus("Show intermediate result (iteration n" + (i + 1) + ")");
-            //      ColorProcessor image2 = (ColorProcessor) (pile_resultat.getProcessor(numSlice).duplicate());
-
-              //    snake.DrawSnake(image2, colorDraw, 1);
-               //   plus.setProcessor("", image2);
-                //  plus.setTitle(imp.getTitle() + " roi " + numRoi + " (iteration n" + (i + 1) + ")");
-                 // plus.updateAndRepaintWindow();
+           
                   if (movie) {
                       fs = new FileSaver(plus);
                       fs.saveAsTiff(usefolder + "//" + addToName + "ABsnake-r" + numRoi + "-t" + i + "-z" + numSlice + ".tif");
@@ -534,26 +578,7 @@ import java.util.Locale;
     	  return center;
     	  
       }
- public void writeIntensities(String nom, int nb,ArrayList<SnakeObject> currentsnakes) {
-     NumberFormat nf = NumberFormat.getInstance(Locale.ENGLISH);
-     nf.setMaximumFractionDigits(3);
-     try {
-         File fichier = new File(nom + nb + ".txt");
-         FileWriter fw = new FileWriter(fichier);
-         BufferedWriter bw = new BufferedWriter(fw);
-         bw.write("\tFramenumber\tRoiLabel\tCenterofMassX\tCenterofMassY\tIntensityCherry\tIntensityBio\n");
-         for (int index = 0; index < currentsnakes.size(); ++index){
-             bw.write("\t" + nb + "\t" + "\t" + currentsnakes.get(index).Label 
-            		 + "\t" +"\t" + nf.format(currentsnakes.get(index).centreofMass[0]) + "\t" +"\t" 
-         + nf.format(currentsnakes.get(index).centreofMass[1]) + "\t" +"\t" 
-            		 + nf.format(currentsnakes.get(index).IntensityCherry)   +"\t" + "\t"
-                    		 + nf.format(currentsnakes.get(index).IntensityBio)  +  "\n");
-         }
-         bw.close();
-         fw.close();
-     } catch (IOException e) {
-     }
- }
+
       /**
        * setup
        *

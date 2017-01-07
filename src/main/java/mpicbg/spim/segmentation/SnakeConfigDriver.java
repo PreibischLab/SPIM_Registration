@@ -18,13 +18,13 @@ public class SnakeConfigDriver
 
   public SnakeConfigDriver()
   {
-	  maxDisplacement0 = 2.0;
-		maxDisplacement1 = 0.1;
-		inv_alphaD0 = 1.0 / 0.5;
-		inv_alphaD1 = 1.0 / 2.0;
-		reg0 = 2.0;
-		reg1 = 0.1;
-		step = 0.99;
+	  this.maxDisplacement0 = 5.0;
+		this.maxDisplacement1 = 0.1;
+		this.inv_alphaD0 = 1.0 / 0.1;
+		this.inv_alphaD1 = 1.0 / 5.0;
+		this.reg0 = 2.0;
+		this.reg1 = 0.1;
+		this.step = 0.99;
   }
 
   public void setMaxDisplacement(double min, double max)

@@ -66,7 +66,7 @@ public class ABSnake {
      * @param sc The new config value
      */
     public void setConfig(SnakeConfig sc) {
-        config = sc;
+        this.config = sc;
     }
 
     /**
@@ -75,7 +75,7 @@ public class ABSnake {
      * @return The nbPoints value
      */
     public int getNbPoints() {
-        return NPT;
+        return this.NPT;
     }
 
     /**
@@ -94,7 +94,7 @@ public class ABSnake {
      * @return The points value
      */
     public Point2d[] getPoints() {
-        return points;
+        return this.points;
     }
 
     /**
@@ -103,7 +103,7 @@ public class ABSnake {
      * @return The config value
      */
     public SnakeConfig getConfig() {
-        return config;
+        return this.config;
     }
 
     /**
@@ -112,7 +112,7 @@ public class ABSnake {
      * @return The lambda value
      */
     public double[] getLambda() {
-        return lambda;
+        return this.lambda;
     }
 
     /**
@@ -121,7 +121,7 @@ public class ABSnake {
      * @return The displacement value
      */
     public Point2d[] getDisplacement() {
-        return displacment;
+        return this.displacment;
     }
 
     /**
@@ -130,7 +130,7 @@ public class ABSnake {
      * @return Description of the Return Value
      */
     public boolean closed() {
-        return closed;
+        return this.closed;
     }
 
     public void setOriginalImage(ImageProcessor originalImage) {
@@ -1368,8 +1368,8 @@ public class ABSnake {
         double alpha = config.getAlpha();
 
         // EXPERIMENTAL
-        double dist_plus = Prefs.get("ABSnake_ThreshDistPos.double", 100);
-        double dist_minus = Prefs.get("ABSnake_ThreshDistNeg.double", 100);
+        double dist_plus = Prefs.get("ABSnake_ThreshDistPos.double", 110);
+        double dist_minus = Prefs.get("ABSnake_ThreshDistNeg.double", 110);
 
         //IJ.log("process "+dist_plus+" "+dist_minus);
         for (i = 0; i < NPT; i++) {

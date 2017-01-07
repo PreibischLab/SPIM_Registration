@@ -10,17 +10,17 @@ package mpicbg.spim.segmentation;
 	    public void run(String arg) {
 	        // dialog
 	    	 // dialog
-	        GenericDialog gd = new GenericDialog("Snake Advanced", IJ.getInstance());
-	        gd.addNumericField("Distance_Search", Prefs.get("ABSnake_DistSearch.int", 100), 0);
-	        gd.addNumericField("Displacement_min", Prefs.get("ABSnake_DisplMin.double", 0.1), 2);
-	        gd.addNumericField("Displacement_max", Prefs.get("ABSnake_DisplMax.double", 2.0), 2);
-	        gd.addNumericField("Threshold_dist_positive", Prefs.get("ABSnake_ThreshDistPos.double", 100), 0);
-	        gd.addNumericField("Threshold_dist_negative", Prefs.get("ABSnake_ThreshDistNeg.double", 100), 0);
-	        gd.addNumericField("Inv_alpha_min", Prefs.get("ABSnake_InvAlphaMin.double", 0.5), 2);
-	        gd.addNumericField("Inv_alpha_max", Prefs.get("ABSnake_InvAlphaMax.double", 2.0), 2);
-	        gd.addNumericField("Reg_min", Prefs.get("ABSnake_RegMin.double", 1), 2);
-	        gd.addNumericField("Reg_max", Prefs.get("ABSnake_RegMax.double", 2), 2);
-	        gd.addNumericField("Mul_factor", Prefs.get("ABSnake_MulFactor.double", 0.99), 4);
+	        GenericDialog gd = new GenericDialog("Snake Advanced");
+	        gd.addNumericField("Distance_Search", 100, 0);
+	        gd.addNumericField("Displacement_min",  0.1, 2);
+	        gd.addNumericField("Displacement_max", 5.0 , 2);
+	        gd.addNumericField("Threshold_dist_positive", 100, 0);
+	        gd.addNumericField("Threshold_dist_negative", 100, 0);
+	        gd.addNumericField("Inv_alpha_min",  0.1, 2);
+	        gd.addNumericField("Inv_alpha_max", 10.0, 2);
+	        gd.addNumericField("Reg_min", 1, 2);
+	        gd.addNumericField("Reg_max",  2, 2);
+	        gd.addNumericField("Mul_factor", 0.99, 4);
 	        // show dialog
 	        gd.showDialog();
 	        Prefs.set("ABSnake_DistSearch.int", (int) gd.getNextNumber());
@@ -33,6 +33,7 @@ package mpicbg.spim.segmentation;
 	        Prefs.set("ABSnake_RegMin.double", gd.getNextNumber());
 	        Prefs.set("ABSnake_RegMax.double", gd.getNextNumber());
 	        Prefs.set("ABSnake_MulFactor.double", gd.getNextNumber());
+	       
 	    }
 	}
 
