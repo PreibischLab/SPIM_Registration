@@ -55,7 +55,7 @@ import java.util.Locale;
       ImageStack pile_seg = null;
       int currentSlice = -1;
       // Dimensions of the stck :
-      int stacksize = 0;
+      int slicesize = 0;
       int length = 0;
       int height= 0;
       // ROI original
@@ -94,24 +94,24 @@ import java.util.Locale;
       // step to display snake
       int step = ite - 1;
       // threshold of edges
-      int Gradthresh = 5;
+      int Gradthresh = 2;
       // how far to look for edges
       int DistMAX = 100;
       
       double Displacement_min =  0.1;
-      double Displacement_max = 5.0;
+      double Displacement_max = 2.0;
       double Threshold_dist_positive =  100;
      double Threshold_dist_negative =  100;
-     double Inv_alpha_min = 0.1;
+     double Inv_alpha_min = 0.2;
       double Inv_alpha_max =  10.0;
       double Reg_min = 1;
-      double Reg_max =  2;
+      double Reg_max =  5;
       double Mul_factor = 0.99;
       
       
       
       // maximum displacement
-      double force = 5;
+      double force = 10;
       // regularization factors, min and max
       double reg = 5;
       double regmin, regmax;
@@ -151,11 +151,11 @@ import java.util.Locale;
           pile = imp.getStack();
           Intensitypile = Intensityimp.getStack();
           // sizes of the stack
-          stacksize = pile.getSize();
+          slicesize = pile.getSize();
           length = pile.getWidth();
           height= pile.getHeight();
           slice1 = 1;
-          slice2 = stacksize;
+          slice2 = slicesize;
           Calibration cal = imp.getCalibration();
           double resXY = cal.pixelWidth;
             double Inten =   cal.pixelDepth;
@@ -206,7 +206,7 @@ import java.util.Locale;
              
               // update of the display
               String label = "" + imp.getTitle();
-              for (int z = 0; z < stacksize; z++) {
+              for (int z = 0; z < slicesize; z++) {
                   pile_resultat.addSlice(label, pile.getProcessor(z + 1).duplicate().convertToRGB());
             	  Intensitypile_resultat.addSlice(label, Intensitypile.getProcessor(z + 1).duplicate().convertToRGB());
 
@@ -313,7 +313,7 @@ import java.util.Locale;
           //if (stacksize == 1) {
           gd.addCheckbox("Save intermediate images", movie);
           //}
-          if (stacksize > 1) {
+          if (slicesize > 1) {
               gd.addNumericField("First_slice:", slice1, 0);
               gd.addNumericField("Last_slice:", slice2, 0);
               gd.addCheckbox("Propagate roi", propagate);
@@ -344,7 +344,7 @@ import java.util.Locale;
               IJ.showStatus("Warning : show step too big\n\t step assignation 1");
               step = 1;
           }
-          if (stacksize > 1) {
+          if (slicesize > 1) {
               slice1 = (int) gd.getNextNumber();
               slice2 = (int) gd.getNextNumber();
               propagate = gd.getNextBoolean();
@@ -408,18 +408,20 @@ import java.util.Locale;
     	  
     		 // dialog
 	        GenericDialog gd = new GenericDialog("Snake Advanced");
-	        gd.addNumericField("Distance_Search", 100, 0);
-	        gd.addNumericField("Displacement_min",  0.1, 2);
-	        gd.addNumericField("Displacement_max", 5.0 , 2);
-	        gd.addNumericField("Threshold_dist_positive", 100, 0);
-	        gd.addNumericField("Threshold_dist_negative", 100, 0);
-	        gd.addNumericField("Inv_alpha_min",  0.1, 2);
-	        gd.addNumericField("Inv_alpha_max", 10.0, 2);
-	        gd.addNumericField("Reg_min", 1, 2);
-	        gd.addNumericField("Reg_max",  2, 2);
-	        gd.addNumericField("Mul_factor", 0.99, 4);
+	        gd.addNumericField("Distance_Search", DistMAX, 0);
+	        gd.addNumericField("Displacement_min",   Displacement_min, 2);
+	        gd.addNumericField("Displacement_max", Displacement_max, 2);
+	        gd.addNumericField("Threshold_dist_positive",Threshold_dist_positive, 0);
+	        gd.addNumericField("Threshold_dist_negative", Threshold_dist_negative, 0);
+	        gd.addNumericField("Inv_alpha_min", Inv_alpha_min, 2);
+	        gd.addNumericField("Inv_alpha_max", Inv_alpha_max, 2);
+	        gd.addNumericField("Reg_min", Reg_min, 2);
+	        gd.addNumericField("Reg_max", Reg_max, 2);
+	        gd.addNumericField("Mul_factor", Mul_factor, 4);
 	        // show dialog
 	        gd.showDialog();
+
+	      
 	        DistMAX =  (int) gd.getNextNumber();
 	        Displacement_min =  gd.getNextNumber();
 	        Displacement_max = gd.getNextNumber();
@@ -438,10 +440,10 @@ import java.util.Locale;
       
       private void AdvancedParameters() {
           // see advanced dialog class
-          configDriver.setMaxDisplacement(Prefs.get("ABSnake_DisplMin.double", 0.1), Prefs.get("ABSnake_DisplMax.double", 5.0));
-          configDriver.setInvAlphaD(Prefs.get("ABSnake_InvAlphaMin.double", 0.1), Prefs.get("ABSnake_InvAlphaMax.double", 4.0));
-          configDriver.setReg(Prefs.get("ABSnake_RegMin.double", 0.1), Prefs.get("ABSnake_RegMax.double", 2.0));
-          configDriver.setStep(Prefs.get("ABSnake_MulFactor.double", 0.99));
+          configDriver.setMaxDisplacement(Displacement_min,Displacement_max);
+          configDriver.setInvAlphaD(Inv_alpha_min, Inv_alpha_max);
+          configDriver.setReg(Reg_min, Reg_max);
+          configDriver.setStep(Mul_factor);
       }
 
       /**
@@ -531,15 +533,15 @@ import java.util.Locale;
     	  double Intensity = 0;
     	  
     	 
-			ImageProcessor mask = roi.getMask();
+			//ImageProcessor mask = roi.getMask();
 			Rectangle r = roi.getBounds();
 			
 			
 			
 			for (int y=0; y<r.height; y++) {
 				for (int x=0; x<r.width; x++) {
-					if (mask.getPixel(x,y)!=0) {
-
+					//if (mask.getPixel(x,y)!=0) {
+                if (roi.contains(x + r.x, y + r.y)){
 						Intensity += ip.getPixelValue(x+r.x, y+r.y);
 					
 					}
@@ -556,14 +558,14 @@ import java.util.Locale;
     	  double SumX = 0;
     	  double SumY = 0;
     	 double[] center = new double[ 2 ];
-			ImageProcessor mask = roi.getMask();
+		//	ImageProcessor mask = roi.getMask();
 			Rectangle r = roi.getBounds();
-			
 			
 			
 			for (int y=0; y<r.height; y++) {
 				for (int x=0; x<r.width; x++) {
-					if (mask.getPixel(x,y)!=0) {
+					//if (mask.getPixel(x,y)!=0) {
+						if (roi.contains(x + r.x, y + r.y)){
 
 						Intensity += ip.getPixelValue(x+r.x, y+r.y);
 						SumX += (x + r.x) * ip.getPixelValue(x+r.x, y+r.y);

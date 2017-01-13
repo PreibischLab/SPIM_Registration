@@ -119,7 +119,6 @@ import trackerType.KFsearch;
 import trackerType.NNsearch;
 import trackerType.TrackModel;
 
-
 /**
  * An interactive tool for getting Intensity in ROI's using Active Contour
  * 
@@ -165,12 +164,11 @@ public class InteractiveActiveContour implements PlugIn {
 	ImagePlus imp;
 	ImagePlus Intensityimp;
 	int channel = 0;
-	Rectangle rectangle;
 	Image<FloatType> img;
 	ImageStack pile = null;
 	ImageStack pile_resultat = null;
 	ImageStack pile_seg = null;
-	int currentSlice = -1;
+	
 	// Dimensions of the stck :
 	int stacksize = 0;
 	int length = 0;
@@ -178,7 +176,7 @@ public class InteractiveActiveContour implements PlugIn {
 	FloatImagePlus<net.imglib2.type.numeric.real.FloatType> source;
 	ArrayList<DifferenceOfGaussianPeak<FloatType>> peaks;
 	// first and last slice to process
-	int slice2, currentslice;
+	int endFrame, currentframe;
 	Color originalColor = new Color(0.8f, 0.8f, 0.8f);
 	Color inactiveColor = new Color(0.95f, 0.95f, 0.95f);
 	public Rectangle standardRectangle;
@@ -194,11 +192,10 @@ public class InteractiveActiveContour implements PlugIn {
 	ImagePlus impcopy;
 	BlobTracker blobtracker;
 	CostFunction<SnakeObject, SnakeObject> UserchosenCostFunction;
-	// = new SquareDistCostFunction();
 	ArrayList<ArrayList<SnakeObject>> AllFrameSnakes;
 
 	public static enum ValueChange {
-		SIGMA, THRESHOLD, SLICE, ROI, MINMAX, ALL
+		SIGMA, THRESHOLD,  ROI, MINMAX, ALL, FRAME
 	}
 
 	boolean isFinished = false;
@@ -273,14 +270,14 @@ public class InteractiveActiveContour implements PlugIn {
 		this.imp = imp;
 		this.Intensityimp = Intensityimp;
 		this.channel = channel;
-		standardRectangle = new Rectangle(0, 0, imp.getWidth() - 1, imp.getHeight() - 1);
+		standardRectangle = new Rectangle(20, 20, imp.getWidth() - 40, imp.getHeight() - 40);
 
 	}
 
 	public InteractiveActiveContour(final ImagePlus imp, final ImagePlus Intensityimp) {
 		this.imp = imp;
 		this.Intensityimp = Intensityimp;
-		standardRectangle = new Rectangle(0, 0, imp.getWidth() - 1, imp.getHeight() - 1);
+		standardRectangle = new Rectangle(20, 20, imp.getWidth() - 40, imp.getHeight() - 40);
 
 	}
 
@@ -297,12 +294,14 @@ public class InteractiveActiveContour implements PlugIn {
 
 		impcopy = imp.duplicate();
 		// sizes of the stack
-		stacksize = imp.getStack().getSize();
+		stacksize = imp.getNFrames();
 		AllFrameSnakes = new ArrayList<ArrayList<SnakeObject>>();
-		slice2 = stacksize;
+		endFrame = stacksize;
 
 		if (imp == null)
 			imp = WindowManager.getCurrentImage();
+		if (Intensityimp == null)
+			Intensityimp = WindowManager.getCurrentImage();
 
 		if (imp.getType() == ImagePlus.COLOR_RGB || imp.getType() == ImagePlus.COLOR_256) {
 			IJ.log("Color images are not supported, please convert to 8, 16 or 32-bit grayscale");
@@ -322,10 +321,10 @@ public class InteractiveActiveContour implements PlugIn {
 			return;
 		}
 
-		currentslice = imp.getFrame();
+		currentframe = imp.getFrame();
 		imp.setPosition(imp.getChannel(), imp.getSlice(), imp.getFrame());
-
-		int z = currentslice;
+		Intensityimp.setPosition(imp.getChannel(), imp.getSlice(), imp.getFrame());
+		int z = currentframe;
 
 		// copy the ImagePlus into an ArrayImage<FloatType> for faster access
 		source = convertToFloat(imp, channel, z - 1, minIntensityImage, maxIntensityImage);
@@ -350,13 +349,13 @@ public class InteractiveActiveContour implements PlugIn {
 		GenericDialog gd = new GenericDialog("Choose Frame");
 
 		if (stacksize > 1) {
-			gd.addNumericField("Move to frame", currentslice, 0);
+			gd.addNumericField("Move to frame", currentframe, 0);
 
 		}
 
 		gd.showDialog();
 		if (stacksize > 1) {
-			currentslice = (int) gd.getNextNumber();
+			currentframe = (int) gd.getNextNumber();
 
 		}
 		return !gd.wasCanceled();
@@ -406,8 +405,8 @@ public class InteractiveActiveContour implements PlugIn {
 		missedframes = (int) gd.getNextNumber();
 		// Choice of tracker
 		trackertype = gd.getNextChoiceIndex();
-		switch (trackertype) {
-		case 0:
+		if (trackertype == 0) {
+		
 			functiontype = gd.getNextChoiceIndex();
 			switch (functiontype) {
 
@@ -425,12 +424,13 @@ public class InteractiveActiveContour implements PlugIn {
 			}
 			blobtracker = new KFsearch(AllFrameSnakes, UserchosenCostFunction, maxSearchradius, initialSearchradius,
 					stacksize, missedframes);
-			break;
-		case 1:
-			blobtracker = new NNsearch(AllFrameSnakes, maxSearchradius, stacksize);
-			break;
-
 		}
+		
+		if (trackertype == 1)
+			blobtracker = new NNsearch(AllFrameSnakes, maxSearchradius, stacksize);
+			
+
+		
 
 		// color choice of display
 		indexcol = gd.getNextChoiceIndex();
@@ -485,11 +485,11 @@ public class InteractiveActiveContour implements PlugIn {
 		}
 
 		final Rectangle rect = roi.getBounds();
-		if (roiChanged || img == null || change == ValueChange.SLICE || rect.getMinX() != rectangle.getMinX()
-				|| rect.getMaxX() != rectangle.getMaxX() || rect.getMinY() != rectangle.getMinY()
-				|| rect.getMaxY() != rectangle.getMaxY()) {
-			rectangle = rect;
-			img = extractImage(source, rectangle, extraSize);
+		if (roiChanged || img == null || change == ValueChange.FRAME || rect.getMinX() != standardRectangle.getMinX()
+				|| rect.getMaxX() != standardRectangle.getMaxX() || rect.getMinY() != standardRectangle.getMinY()
+				|| rect.getMaxY() != standardRectangle.getMaxY()) {
+			standardRectangle = rect;
+			img = extractImage(source, standardRectangle, extraSize);
 			roiChanged = true;
 		}
 
@@ -500,7 +500,7 @@ public class InteractiveActiveContour implements PlugIn {
 		}
 
 		// compute the Difference Of Gaussian if necessary
-		if (peaks == null || roiChanged || change == ValueChange.SIGMA || change == ValueChange.SLICE
+		if (peaks == null || roiChanged || change == ValueChange.SIGMA || change == ValueChange.FRAME
 				|| change == ValueChange.ALL) {
 			//
 			// Compute the Sigmas for the gaussian folding
@@ -556,7 +556,6 @@ public class InteractiveActiveContour implements PlugIn {
 			roimanager = new RoiManager();
 		}
 
-		Roi[] RoisOrig = roimanager.getRoisAsArray();
 
 		MouseEvent mev = new MouseEvent(imp.getCanvas(), MouseEvent.MOUSE_RELEASED, System.currentTimeMillis(), 0, 0, 0,
 				1, false);
@@ -609,15 +608,18 @@ public class InteractiveActiveContour implements PlugIn {
 			// add listener to the imageplus slice slider
 			sliceObserver = new SliceObserver(imp, new ImagePlusListener());
 
-			imp.setSlice(imp.getFrame());
+			imp.setPosition(channel, imp.getSlice(), imp.getFrame());
+			Intensityimp.setPosition(channel, imp.getSlice(), imp.getFrame());
 			if (imp.getFrame() + 1 <= stacksize) {
-				imp.setSlice(imp.getFrame() + 1);
+				imp.setPosition(channel, imp.getSlice(), imp.getFrame() + 1);
+				Intensityimp.setPosition(channel, imp.getSlice(), imp.getFrame());
 			} else {
 				IJ.log("Max frame number exceeded, moving to last frame instead");
-				imp.setSlice(stacksize);
-				currentslice = stacksize;
+				imp.setPosition(channel, imp.getSlice(),stacksize);
+				Intensityimp.setPosition(channel, imp.getSlice(),stacksize);
+				currentframe = stacksize;
 			}
-			currentslice = imp.getFrame();
+			currentframe = imp.getFrame();
 
 			if (imp.getType() == ImagePlus.COLOR_RGB || imp.getType() == ImagePlus.COLOR_256) {
 				IJ.log("Color images are not supported, please convert to 8, 16 or 32-bit grayscale");
@@ -634,16 +636,16 @@ public class InteractiveActiveContour implements PlugIn {
 
 			// copy the ImagePlus into an ArrayImage<FloatType> for faster
 			// access
-			source = convertToFloat(imp, channel, currentslice - 1, minIntensityImage, maxIntensityImage);
+			source = convertToFloat(imp, channel, currentframe - 1, minIntensityImage, maxIntensityImage);
 
-			updatePreview(ValueChange.SLICE);
+			updatePreview(ValueChange.FRAME);
 			isStarted = true;
 
 			// check whenever roi is modified to update accordingly
 			roiListener = new RoiListener();
 			imp.getCanvas().addMouseListener(roiListener);
-			ImagePlus newimp = new ImagePlus("Currentslice " + currentslice,
-					imp.getImageStack().getProcessor(currentslice).duplicate());
+			ImagePlus newimp = new ImagePlus("Currentslice " + currentframe,
+					imp.getImageStack().getProcessor(currentframe).duplicate());
 			final Rectangle rect = roi.getBounds();
 
 			for (final DifferenceOfGaussianPeak<FloatType> peak : peaks) {
@@ -680,15 +682,17 @@ public class InteractiveActiveContour implements PlugIn {
 			if (dialog) {
 				// add listener to the imageplus slice slider
 				sliceObserver = new SliceObserver(imp, new ImagePlusListener());
+				imp.setPosition(channel, imp.getSlice(), imp.getFrame());
 
-				imp.setSlice(imp.getFrame());
 
-				if (currentslice <= stacksize) {
-					imp.setSlice(currentslice);
+				if (currentframe <= stacksize) {
+					imp.setPosition(channel, imp.getSlice(), currentframe);
+					Intensityimp.setPosition(channel, imp.getSlice(), currentframe);
 				} else {
 					IJ.log("Max frame number exceeded, moving to last frame instead");
-					imp.setSlice(stacksize);
-					currentslice = stacksize;
+					imp.setPosition(channel, imp.getSlice(),stacksize);
+					Intensityimp.setPosition(channel, imp.getSlice(),stacksize);
+					currentframe = stacksize;
 				}
 
 				if (imp.getType() == ImagePlus.COLOR_RGB || imp.getType() == ImagePlus.COLOR_256) {
@@ -707,18 +711,18 @@ public class InteractiveActiveContour implements PlugIn {
 
 				// copy the ImagePlus into an ArrayImage<FloatType> for faster
 				// access
-				source = convertToFloat(imp, channel, currentslice - 1, minIntensityImage, maxIntensityImage);
+				source = convertToFloat(imp, channel, currentframe - 1, minIntensityImage, maxIntensityImage);
 
 				// compute first version
-				updatePreview(ValueChange.SLICE);
+				updatePreview(ValueChange.FRAME);
 				isStarted = true;
 
 				// check whenever roi is modified to update accordingly
 				roiListener = new RoiListener();
 				imp.getCanvas().addMouseListener(roiListener);
 
-				ImagePlus newimp = new ImagePlus("Currentslice " + currentslice,
-						imp.getImageStack().getProcessor(currentslice).duplicate());
+				ImagePlus newimp = new ImagePlus("Currentslice " + currentframe,
+						imp.getImageStack().getProcessor(currentframe).duplicate());
 
 				final Rectangle rect = roi.getBounds();
 
@@ -756,21 +760,20 @@ public class InteractiveActiveContour implements PlugIn {
 			sliceObserver = new SliceObserver(imp, new ImagePlusListener());
 
 			boolean dialog = Dialoguesec();
-
-			imp.setSlice(imp.getFrame());
-			Intensityimp.setSlice(imp.getSlice());
+            imp.setPosition(channel, imp.getSlice(), imp.getFrame());
+            Intensityimp.setPosition(channel, imp.getSlice(), imp.getFrame());
 			int next = imp.getFrame();
 			for (int index = next; index <= stacksize; ++index) {
-				imp.setSlice(index);
-				currentslice = imp.getFrame();
-				Intensityimp.setSlice(imp.getSlice());
-				ImagePlus newimp = new ImagePlus("Currentslice " + currentslice,
-						imp.getImageStack().getProcessor(currentslice).duplicate());
-				ImagePlus Intensitynewimp = new ImagePlus("Currentslice " + currentslice,
-						Intensityimp.getImageStack().getProcessor(currentslice).duplicate());
+				imp.setPosition(channel, imp.getSlice(), index);
+				currentframe = imp.getFrame();
+				Intensityimp.setPosition(channel, imp.getSlice(), index);
+				ImagePlus newimp = new ImagePlus("Currentframe " + currentframe,
+						imp.getImageStack().getProcessor(currentframe).duplicate());
+				ImagePlus Intensitynewimp = new ImagePlus("Currentframe " + currentframe,
+						Intensityimp.getImageStack().getProcessor(currentframe).duplicate());
 				Roi roi = imp.getRoi();
 				final Rectangle rect = roi.getBounds();
-				InteractiveSnake snake = new InteractiveSnake(newimp, Intensitynewimp, currentslice);
+				InteractiveSnake snake = new InteractiveSnake(newimp, Intensitynewimp, currentframe);
 
 				RoiManager manager = RoiManager.getInstance();
 				if (manager != null) {
@@ -779,9 +782,9 @@ public class InteractiveActiveContour implements PlugIn {
 
 				// copy the ImagePlus into an ArrayImage<FloatType> for faster
 				// access
-				source = convertToFloat(imp, channel, currentslice - 1, minIntensityImage, maxIntensityImage);
+				source = convertToFloat(imp, channel, currentframe - 1, minIntensityImage, maxIntensityImage);
 
-				updatePreview(ValueChange.SLICE);
+				updatePreview(ValueChange.FRAME);
 
 				isStarted = true;
 
@@ -820,7 +823,7 @@ public class InteractiveActiveContour implements PlugIn {
 				snake.run(ip);
 
 				ImageStack currentimg = snake.getResult();
-				new ImagePlus("Snake Roi's for slice:" + currentslice, currentimg).show();
+				new ImagePlus("Snake Roi's for slice:" + currentframe, currentimg).show();
 				ArrayList<SnakeObject> currentsnakes = snake.getRoiList();
 
 				if (AllFrameSnakes != null) {
@@ -830,7 +833,7 @@ public class InteractiveActiveContour implements PlugIn {
 						SnakeObject SnakeFrame = AllFrameSnakes.get(Listindex).get(0);
 						int Frame = SnakeFrame.Framenumber;
 
-						if (Frame == currentslice) {
+						if (Frame == currentframe) {
 							AllFrameSnakes.remove(Listindex);
 
 						}
@@ -842,7 +845,7 @@ public class InteractiveActiveContour implements PlugIn {
 				IJ.log(" Size of List for tracker: " + AllFrameSnakes.size());
 				if (snake.saveIntensity) {
 
-					writeIntensities(usefolder + "//" + addToName + "-z", currentslice, currentsnakes);
+					writeIntensities(usefolder + "//" + addToName + "-z", currentframe, currentsnakes);
 
 				}
 				RoiEncoder saveRoi;
@@ -851,7 +854,7 @@ public class InteractiveActiveContour implements PlugIn {
 						Roi roiToSave = currentsnakes.get(indexs).roi;
 						int roiindex = currentsnakes.get(indexs).Label;
 						saveRoi = new RoiEncoder(
-								usefolder + "//" + "Roi" + addToName + roiindex + "-z" + currentslice + ".roi");
+								usefolder + "//" + "Roi" + addToName + roiindex + "-z" + currentframe + ".roi");
 						try {
 							saveRoi.write(roiToSave);
 						} catch (IOException e) {
@@ -868,13 +871,13 @@ public class InteractiveActiveContour implements PlugIn {
 		@Override
 		public void actionPerformed(final ActionEvent arg0) {
 
-			ImagePlus newimp = new ImagePlus("Currentslice " + currentslice,
-					imp.getImageStack().getProcessor(currentslice).duplicate());
-			ImagePlus Intensitynewimp = new ImagePlus("Currentslice " + currentslice,
-					Intensityimp.getImageStack().getProcessor(currentslice).duplicate());
+			ImagePlus newimp = new ImagePlus("Currentslice " + currentframe,
+					imp.getImageStack().getProcessor(currentframe).duplicate());
+			ImagePlus Intensitynewimp = new ImagePlus("Currentslice " + currentframe,
+					Intensityimp.getImageStack().getProcessor(currentframe).duplicate());
 			Roi roi = imp.getRoi();
 			final Rectangle rect = roi.getBounds();
-			InteractiveSnake snake = new InteractiveSnake(newimp, Intensitynewimp, currentslice);
+			InteractiveSnake snake = new InteractiveSnake(newimp, Intensitynewimp, currentframe);
 
 			for (final DifferenceOfGaussianPeak<FloatType> peak : peaks) {
 				if ((peak.isMax() && lookForMaxima) || (peak.isMin() && lookForMinima)) {
@@ -903,7 +906,7 @@ public class InteractiveActiveContour implements PlugIn {
 
 			snake.run(ip);
 			ImageStack currentimg = snake.getResult();
-			new ImagePlus("Snake Roi's for slice:" + currentslice, currentimg).show();
+			new ImagePlus("Snake Roi's for slice:" + currentframe, currentimg).show();
 			ArrayList<SnakeObject> currentsnakes = snake.getRoiList();
 			if (AllFrameSnakes != null) {
 
@@ -912,7 +915,7 @@ public class InteractiveActiveContour implements PlugIn {
 					SnakeObject SnakeFrame = AllFrameSnakes.get(Listindex).get(0);
 					int Frame = SnakeFrame.Framenumber;
 
-					if (Frame == currentslice) {
+					if (Frame == currentframe) {
 						AllFrameSnakes.remove(Listindex);
 
 					}
@@ -924,7 +927,7 @@ public class InteractiveActiveContour implements PlugIn {
 			IJ.log("Size of list for tracker " + AllFrameSnakes.size());
 			if (snake.saveIntensity) {
 
-				writeIntensities(usefolder + "//" + addToName + "-z", currentslice, currentsnakes);
+				writeIntensities(usefolder + "//" + addToName + "-z", currentframe, currentsnakes);
 
 			}
 			RoiEncoder saveRoi;
@@ -933,7 +936,7 @@ public class InteractiveActiveContour implements PlugIn {
 					Roi roiToSave = currentsnakes.get(index).roi;
 					int roiindex = currentsnakes.get(index).Label;
 					saveRoi = new RoiEncoder(
-							usefolder + "//" + "Roi" + addToName + roiindex + "-z" + currentslice + ".roi");
+							usefolder + "//" + "Roi" + addToName + roiindex + "-z" + currentframe + ".roi");
 					try {
 						saveRoi.write(roiToSave);
 					} catch (IOException e) {
@@ -951,26 +954,28 @@ public class InteractiveActiveContour implements PlugIn {
 
 		return sigma[1];
 	}
-	 public static void writeIntensities(String nom, int nb,ArrayList<SnakeObject> currentsnakes) {
-	     NumberFormat nf = NumberFormat.getInstance(Locale.ENGLISH);
-	     nf.setMaximumFractionDigits(3);
-	     try {
-	         File fichier = new File(nom + nb + ".txt");
-	         FileWriter fw = new FileWriter(fichier);
-	         BufferedWriter bw = new BufferedWriter(fw);
-	         bw.write("\tFramenumber\tRoiLabel\tCenterofMassX\tCenterofMassY\tIntensityCherry\tIntensityBio\n");
-	         for (int index = 0; index < currentsnakes.size(); ++index){
-	             bw.write("\t" + nb + "\t" + "\t" + currentsnakes.get(index).Label 
-	            		 + "\t" +"\t" + nf.format(currentsnakes.get(index).centreofMass[0]) + "\t" +"\t" 
-	         + nf.format(currentsnakes.get(index).centreofMass[1]) + "\t" +"\t" 
-	            		 + nf.format(currentsnakes.get(index).IntensityCherry)   +"\t" + "\t"
-	                    		 + nf.format(currentsnakes.get(index).IntensityBio)  +  "\n");
-	         }
-	         bw.close();
-	         fw.close();
-	     } catch (IOException e) {
-	     }
-	 }
+
+	public static void writeIntensities(String nom, int nb, ArrayList<SnakeObject> currentsnakes) {
+		NumberFormat nf = NumberFormat.getInstance(Locale.ENGLISH);
+		nf.setMaximumFractionDigits(3);
+		try {
+			File fichier = new File(nom + nb + ".txt");
+			FileWriter fw = new FileWriter(fichier);
+			BufferedWriter bw = new BufferedWriter(fw);
+			bw.write("\tFramenumber\tRoiLabel\tCenterofMassX\tCenterofMassY\tIntensityCherry\tIntensityBio\n");
+			for (int index = 0; index < currentsnakes.size(); ++index) {
+				bw.write("\t" + nb + "\t" + "\t" + currentsnakes.get(index).Label + "\t" + "\t"
+						+ nf.format(currentsnakes.get(index).centreofMass[0]) + "\t" + "\t"
+						+ nf.format(currentsnakes.get(index).centreofMass[1]) + "\t" + "\t"
+						+ nf.format(currentsnakes.get(index).IntensityCherry) + "\t" + "\t"
+						+ nf.format(currentsnakes.get(index).IntensityBio) + "\n");
+			}
+			bw.close();
+			fw.close();
+		} catch (IOException e) {
+		}
+	}
+
 	/**
 	 * Extract the current 2d region of interest from the souce image
 	 * 
@@ -1375,51 +1380,38 @@ public class InteractiveActiveContour implements PlugIn {
 		}
 
 		public void actionPerformed(final ActionEvent arg0) {
-/*
-			File fichier = new File(addToName + "All" + ".txt");
-			try {
-				FileWriter fw = new FileWriter(fichier);
-				BufferedWriter bw = new BufferedWriter(fw);
-
-				File folder = new File(usefolder);
-				File[] files = folder.listFiles();
-                if (files!=null){
-				HashMap<Integer, File> filesmap = new HashMap<Integer, File>();
-
-				for (int i = 0; i < files.length; ++i) {
-					File file = files[i];
-					if (file.isFile() && file.getName().contains(addToName)) {
-
-						filesmap.put(i, file);
-					}
-
-				}
-				IJ.log("Total files to be combined:" + filesmap.size());
-				// create your iterator for your map
-				Iterator<Entry<Integer, File>> it = filesmap.entrySet().iterator();
-
-				while (it.hasNext()) {
-
-					// the key/value pair is stored here in pairs
-					Map.Entry<Integer, File> pairs = it.next();
-					int c;
-					FileInputStream in = new FileInputStream(pairs.getValue());
-					while ((c = in.read()) != -1) {
-
-						bw.write(c);
-					}
-				}
-
-				bw.close();
-				fw.close();
-				IJ.log("Compiled the Object properties for all frames in the folder:" + usefolder);
-			}
-			}
-			catch (IOException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			}
-			*/
+			/*
+			 * File fichier = new File(addToName + "All" + ".txt"); try {
+			 * FileWriter fw = new FileWriter(fichier); BufferedWriter bw = new
+			 * BufferedWriter(fw);
+			 * 
+			 * File folder = new File(usefolder); File[] files =
+			 * folder.listFiles(); if (files!=null){ HashMap<Integer, File>
+			 * filesmap = new HashMap<Integer, File>();
+			 * 
+			 * for (int i = 0; i < files.length; ++i) { File file = files[i]; if
+			 * (file.isFile() && file.getName().contains(addToName)) {
+			 * 
+			 * filesmap.put(i, file); }
+			 * 
+			 * } IJ.log("Total files to be combined:" + filesmap.size()); //
+			 * create your iterator for your map Iterator<Entry<Integer, File>>
+			 * it = filesmap.entrySet().iterator();
+			 * 
+			 * while (it.hasNext()) {
+			 * 
+			 * // the key/value pair is stored here in pairs Map.Entry<Integer,
+			 * File> pairs = it.next(); int c; FileInputStream in = new
+			 * FileInputStream(pairs.getValue()); while ((c = in.read()) != -1)
+			 * {
+			 * 
+			 * bw.write(c); } }
+			 * 
+			 * bw.close(); fw.close(); IJ.log(
+			 * "Compiled the Object properties for all frames in the folder:" +
+			 * usefolder); } } catch (IOException e) { // TODO Auto-generated
+			 * catch block e.printStackTrace(); }
+			 */
 			IJ.log("Start Tracking");
 
 			boolean dialog = DialogueTracker();
@@ -1433,102 +1425,88 @@ public class InteractiveActiveContour implements PlugIn {
 
 				DisplayGraph totaldisplaytracks = new DisplayGraph(impcopy, graph, colorDraw);
 				totaldisplaytracks.getImp();
-				
-				TrackModel model = new TrackModel(graph) ;
+
+				TrackModel model = new TrackModel(graph);
 				model.getDirectedNeighborIndex();
-				
-				
+
 				// Get all the track id's
-				for ( final Integer id : model.trackIDs( true ) )
-				{
-				   
+				for (final Integer id : model.trackIDs(true)) {
+
 					// Get the corresponding set for each id
 					model.setName(id, "Track" + id);
-					
+
 					final HashSet<SnakeObject> Snakeset = model.trackSnakeObjects(id);
 					ArrayList<SnakeObject> list = new ArrayList<SnakeObject>();
-					Comparator<SnakeObject> Framecomparison = new Comparator<SnakeObject>(){
-							
-							@Override
-					       public int compare(final SnakeObject A, final SnakeObject B){
-							
-								
-								return A.Framenumber - B.Framenumber;
-							
+					Comparator<SnakeObject> Framecomparison = new Comparator<SnakeObject>() {
+
+						@Override
+						public int compare(final SnakeObject A, final SnakeObject B) {
+
+							return A.Framenumber - B.Framenumber;
+
 						}
 
-						
-							
-							
-						};
-	
-				
-						
+					};
+
 					Iterator<SnakeObject> Snakeiter = Snakeset.iterator();
-					
+
 					// Write tracks with same track id to file
 					try {
-				        File fichiertrack = new File(usefolder + "//" + addTrackToName   + id + ".txt");
-				        FileWriter fwtr = new FileWriter(fichiertrack);
-				        BufferedWriter bwtr = new BufferedWriter(fwtr);
-				        NumberFormat nf = NumberFormat.getInstance(Locale.ENGLISH);
-					    nf.setMaximumFractionDigits(3);
-			bwtr.write("\tFramenumber\tTrackID\tCenterofMassX\tCenterofMassY\tIntensityCherry\tIntensityBio\n");
+						File fichiertrack = new File(usefolder + "//" + addTrackToName+ "test" + id + ".txt");
+						FileWriter fwtr = new FileWriter(fichiertrack);
+						BufferedWriter bwtr = new BufferedWriter(fwtr);
+						NumberFormat nf = NumberFormat.getInstance(Locale.ENGLISH);
+						nf.setMaximumFractionDigits(3);
+						bwtr.write(
+								"\tFramenumber\tTrackID\tCenterofMassX\tCenterofMassY\tIntensityCherry\tIntensityBio\n");
 
-					while(Snakeiter.hasNext()){
-						
-						
-						SnakeObject currentsnake = Snakeiter.next();
-       
-				       		list.add(currentsnake);
-				           
-				        
-				        
-				    					
-				}
-					Collections.sort(list, Framecomparison);
-					for (int index = 0; index < list.size(); ++index){
-					 bwtr.write("\t" + list.get(index).Framenumber + "\t" + "\t" + id  
-			           		 + "\t" +"\t" + nf.format(list.get(index).centreofMass[0]) + "\t" +"\t" 
-			        + nf.format(list.get(index).centreofMass[1]) + "\t" +"\t" 
-			           		 + nf.format(list.get(index).IntensityCherry) +"\t" +"\t"
-			                   		 + nf.format(list.get(index).IntensityBio) + "\n");
+						while (Snakeiter.hasNext()) {
+
+							SnakeObject currentsnake = Snakeiter.next();
+
+							list.add(currentsnake);
+
+						}
+						Collections.sort(list, Framecomparison);
+						for (int index = 0; index < list.size(); ++index) {
+							bwtr.write("\t" + list.get(index).Framenumber + "\t" + "\t" + id + "\t" + "\t"
+									+ nf.format(list.get(index).centreofMass[0]) + "\t" + "\t"
+									+ nf.format(list.get(index).centreofMass[1]) + "\t" + "\t"
+									+ nf.format(list.get(index).IntensityCherry) + "\t" + "\t"
+									+ nf.format(list.get(index).IntensityBio) + "\n");
+						}
+						bwtr.close();
+						fwtr.close();
+					} catch (IOException e) {
 					}
-							    bwtr.close();
-						        fwtr.close();
-						    } catch (IOException e) {
-						    }	
-				
+
 				}
 			}
 
 		}
 
 	}
-	 
-	 public static void writeTracks(String nom, int Framenumber, int Trackid,SnakeObject currentsnake) {
-	     NumberFormat nf = NumberFormat.getInstance(Locale.ENGLISH);
-	     nf.setMaximumFractionDigits(3);
-	     try {
-	         File fichier = new File(nom + Trackid + ".txt");
-	         FileWriter fw = new FileWriter(fichier);
-	         BufferedWriter bw = new BufferedWriter(fw);
-	         bw.write("\tFramenumber\tTrackID\tCenterofMassX\tCenterofMassY\tIntensityCherry\tIntensityBio\n");
-	       
-	        	
-	        		
-	             bw.write("\t" + Framenumber + "\t" + "\t" + Trackid  
-	            		 + "\t" +"\t" + nf.format(currentsnake.centreofMass[0]) + "\t" +"\t" 
-	         + nf.format(currentsnake.centreofMass[1]) + "\t" +"\t" 
-	            		 + nf.format(currentsnake.IntensityCherry) +"\t" +"\t"
-	                    		 + nf.format(currentsnake.IntensityBio) + "\n");
-	         
-	         
-	         bw.close();
-	         fw.close();
-	     } catch (IOException e) {
-	     }
-	 }
+
+	public static void writeTracks(String nom, int Framenumber, int Trackid, SnakeObject currentsnake) {
+		NumberFormat nf = NumberFormat.getInstance(Locale.ENGLISH);
+		nf.setMaximumFractionDigits(3);
+		try {
+			File fichier = new File(nom + Trackid + ".txt");
+			FileWriter fw = new FileWriter(fichier);
+			BufferedWriter bw = new BufferedWriter(fw);
+			bw.write("\tFramenumber\tTrackID\tCenterofMassX\tCenterofMassY\tIntensityCherry\tIntensityBio\n");
+
+			bw.write("\t" + Framenumber + "\t" + "\t" + Trackid + "\t" + "\t" + nf.format(currentsnake.centreofMass[0])
+					+ "\t" + "\t" + nf.format(currentsnake.centreofMass[1]) + "\t" + "\t"
+					+ nf.format(currentsnake.IntensityCherry) + "\t" + "\t" + nf.format(currentsnake.IntensityBio)
+					+ "\n");
+
+			bw.close();
+			fw.close();
+		} catch (IOException e) {
+		}
+	}
+
 	protected class CancelButtonListener implements ActionListener {
 		final Frame parent;
 		final boolean cancel;
@@ -1712,7 +1690,7 @@ public class InteractiveActiveContour implements PlugIn {
 				while (isComputing) {
 					SimpleMultiThreading.threadWait(10);
 				}
-				updatePreview(ValueChange.SLICE);
+				updatePreview(ValueChange.FRAME);
 
 			}
 		}
