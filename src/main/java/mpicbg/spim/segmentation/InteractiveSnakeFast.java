@@ -23,7 +23,16 @@ package mpicbg.spim.segmentation;
   import ij.plugin.filter.PlugInFilter;
   import ij.plugin.frame.*;
   import ij.process.*;
-
+import net.imglib2.Cursor;
+import net.imglib2.RandomAccess;
+import net.imglib2.RandomAccessibleInterval;
+import net.imglib2.algorithm.stats.Normalize;
+import net.imglib2.img.Img;
+import net.imglib2.img.ImgFactory;
+import net.imglib2.img.display.imagej.ImageJFunctions;
+import net.imglib2.type.numeric.integer.UnsignedByteType;
+import net.imglib2.type.numeric.real.FloatType;
+import net.imglib2.view.Views;
 
 import java.awt.*;
 import java.io.BufferedWriter;
@@ -42,22 +51,43 @@ import java.util.Locale;
    * @created 26 aout 2003
    * @modified Dec 2015 by Varun Kapoor
    */
-  public class InteractiveSnake implements PlugInFilter {
+  public class InteractiveSnakeFast implements PlugInFilter {
       // Sauvegarde de la fenetre d'image :
 
       ImagePlus imp;
       ImagePlus Intensityimp;
       
+      
+      RandomAccessibleInterval<FloatType> originalimage;
+      RandomAccessibleInterval<FloatType> originalIntensityimage;
+      
       ImageStack pile = null;
       ImageStack Intensitypile = null;
+      
+      
+      
+      RandomAccessibleInterval<FloatType> resultoriginalimage;
+      RandomAccessibleInterval<FloatType> resultoriginalIntensityimage;
+      
       ImageStack pile_resultat = null;
       ImageStack Intensitypile_resultat = null;
+      
+      
+      
+      
+      
+      RandomAccessibleInterval<FloatType> resultsegimage;
       ImageStack pile_seg = null;
+
+      
+      
+      
       int currentSlice = -1;
       // Dimensions of the stck :
       int slicesize = 0;
       int length = 0;
       int height= 0;
+      private int ndims;
       // ROI original
       int nbRois;
       Roi rorig = null;
@@ -70,19 +100,26 @@ import java.util.Locale;
       
 
    
-      public InteractiveSnake (ImagePlus imp, ImagePlus Intensityimp, final int Frame){
+      public InteractiveSnakeFast (ImagePlus imp, ImagePlus Intensityimp, final int Frame){
     	  
     	  this.imp = imp;
     	  this.Intensityimp = Intensityimp;
     	  this.Frame = Frame;
+    	  
+    	  originalimage = ImageJFunctions.convertFloat(imp.duplicate());
+    	  originalIntensityimage =  ImageJFunctions.convertFloat(Intensityimp.duplicate());
+    	  ndims = originalimage.numDimensions();
       }
       
-      public InteractiveSnake (ImagePlus imp, ImagePlus Intensityimp, final int channel, final int Frame){
+      public InteractiveSnakeFast (ImagePlus imp, ImagePlus Intensityimp, final int channel, final int Frame){
     	  
     	  this.imp = imp;
     	  this.Intensityimp = Intensityimp;
     	  this.channel = channel;
     	  this.Frame = Frame;
+    	  originalimage = ImageJFunctions.convertFloat(imp.duplicate());
+    	  originalIntensityimage =  ImageJFunctions.convertFloat(Intensityimp.duplicate());
+    	  ndims = originalimage.numDimensions();
       }
       
       /**
@@ -151,9 +188,13 @@ import java.util.Locale;
           pile = imp.getStack();
           Intensitypile = Intensityimp.getStack();
           // sizes of the stack
-          slicesize = pile.getSize();
-          length = pile.getWidth();
-          height= pile.getHeight();
+        //  slicesize = pile.getSize();
+       //   length = pile.getWidth();
+        //  height= pile.getHeight();
+    	  
+    	  slicesize = (int) originalimage.dimension(2);
+    	  height = (int) originalimage.dimension(1);
+    	  length = (int) originalimage.dimension(0);
           slice1 = 1;
           slice2 = slicesize;
           Calibration cal = imp.getCalibration();
@@ -197,13 +238,28 @@ import java.util.Locale;
              
               regmin = reg / 2.0;
               regmax = reg;
-             
+
+      		final FloatType type = originalimage.randomAccess().get().createVariable();
+      		final ImgFactory<FloatType> factory = net.imglib2.util.Util.getArrayOrCellImgFactory(originalimage, type);
+      		resultoriginalimage = factory.create(originalimage, type);
+      		resultoriginalIntensityimage = factory.create(originalIntensityimage, type);
+      		
               pile_resultat = new ImageStack(length, height, java.awt.image.ColorModel.getRGBdefault());
               Intensitypile_resultat = new ImageStack(length, height, java.awt.image.ColorModel.getRGBdefault());
+             
+              
               if (createsegimage) {
                   pile_seg = new ImageStack(length, height);
+                  
+                  resultsegimage = factory.create(originalimage, type);
+                  
               }
              
+              
+     
+              resultoriginalimage = copy(originalimage);
+              resultoriginalIntensityimage = copy(originalIntensityimage);
+              
               // update of the display
               String label = "" + imp.getTitle();
               for (int z = 0; z < slicesize; z++) {
@@ -215,17 +271,36 @@ import java.util.Locale;
 
               //display sices in RGB color
               ColorProcessor image;
+              
+              RandomAccessibleInterval<FloatType> currentimg = null;
+              
+              
               ImagePlus plus;
 
               Roi roi;
-              ABSnake snake;
+              ABSnakeFast snake;
               ByteProcessor seg = null;
               int sens = slice1 < slice2 ? 1 : -1;
               for (int z = slice1; z != (slice2 + sens); z += sens) {
+            	  
+            	  System.out.println(z + " " + ndims);
+            	  // Create a view along the z direction (ndims - 2)
+            	  if (ndims > 2){
+            	  currentimg = Views.hyperSlice(resultoriginalimage, ndims - 1 , z);
+            	 ImageJFunctions.show(currentimg);
+            	  }
+            	  
+            	  if (ndims == 2)
+            		  currentimg = resultoriginalimage;
+            	  
+            	  
                   ColorProcessor imageDraw = (ColorProcessor) (pile_resultat.getProcessor(z).duplicate());
                   ColorProcessor IntensityimageDraw = (ColorProcessor) (Intensitypile_resultat.getProcessor(z).duplicate());
                   image = (ColorProcessor) (pile_resultat.getProcessor(z).duplicate());
-                  plus = new ImagePlus("Running snakes in current Slice " , image);
+                  
+                  plus = ImageJFunctions.wrapFloat(currentimg, "Running snakes in current Slice");
+                  
+               //   plus = new ImagePlus("Running snakes in current Slice " , image);
                  
                   for (int i = 0; i < RoisOrig.length; i++) {
                       if (createsegimage) {
@@ -453,7 +528,7 @@ import java.util.Locale;
        * @param image RGB image to display the snake
        * @param numSlice which image of the stack
        */
-      public ABSnake processSnake(ImagePlus plus, Roi roi, int numSlice, int numRoi) {
+      public ABSnakeFast processSnake(ImagePlus plus, Roi roi, int numSlice, int numRoi) {
          
           int i;
           
@@ -463,7 +538,7 @@ import java.util.Locale;
           processRoi = roi;
 
           // initialisation of the snake
-          ABSnake snake = new ABSnake();
+          ABSnakeFast snake = new ABSnakeFast();
           snake.Init(processRoi);
           snake.setOriginalImage(pile.getProcessor(numSlice));
 
@@ -581,6 +656,31 @@ import java.util.Locale;
     	  return center;
     	  
       }
+ 
+ 
+ public RandomAccessibleInterval<FloatType> copy(final RandomAccessibleInterval<FloatType> input) {
+	
+		
+		final FloatType type = new FloatType();
+		final ImgFactory<FloatType> factory = net.imglib2.util.Util.getArrayOrCellImgFactory(input, type);
+		final RandomAccessibleInterval<FloatType> output = factory.create(input, type);
+		// create a cursor for both images
+		Cursor<FloatType> cursorInput = Views.iterable(input).cursor();
+		RandomAccess<FloatType> ranOutput = output.randomAccess();
+
+		// iterate over the input
+		while (cursorInput.hasNext()) {
+			// move both cursors forward by one pixel
+			cursorInput.fwd();
+			ranOutput.setPosition(cursorInput);
+
+		
+			ranOutput.get().set(cursorInput.get().get());
+		}
+
+		// return the copy
+		return output;
+	}
 
       /**
        * setup

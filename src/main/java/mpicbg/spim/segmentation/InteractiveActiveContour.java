@@ -773,7 +773,7 @@ public class InteractiveActiveContour implements PlugIn {
 						Intensityimp.getImageStack().getProcessor(currentframe).duplicate());
 				Roi roi = imp.getRoi();
 				final Rectangle rect = roi.getBounds();
-				InteractiveSnake snake = new InteractiveSnake(newimp, Intensitynewimp, currentframe);
+				InteractiveSnakeFast snake = new InteractiveSnakeFast(newimp, Intensitynewimp, currentframe);
 
 				RoiManager manager = RoiManager.getInstance();
 				if (manager != null) {
@@ -927,7 +927,7 @@ public class InteractiveActiveContour implements PlugIn {
 			IJ.log("Size of list for tracker " + AllFrameSnakes.size());
 			if (snake.saveIntensity) {
 
-				writeIntensities(usefolder + "//" + addToName + "-z", currentframe, currentsnakes);
+				writeIntensities(usefolder + "//" + addToName + "-t", currentframe, currentsnakes);
 
 			}
 			RoiEncoder saveRoi;
@@ -1150,7 +1150,7 @@ public class InteractiveActiveContour implements PlugIn {
 
 		final Label thresholdText = new Label("Threshold = " + this.threshold, Label.CENTER);
 
-		final Button button = new Button("Start Tracking");
+		final Button track = new Button("Start Tracking");
 		final Button cancel = new Button("Cancel");
 		final Button snakes = new Button("Apply snakes to current Frame selection");
 		final Button moveNextListener = new Button("Move to next frame");
@@ -1225,7 +1225,7 @@ public class InteractiveActiveContour implements PlugIn {
 
 		++c.gridy;
 		c.insets = new Insets(10, 175, 0, 175);
-		frame.add(button, c);
+		frame.add(track, c);
 
 		++c.gridy;
 		c.insets = new Insets(10, 175, 0, 175);
@@ -1236,7 +1236,7 @@ public class InteractiveActiveContour implements PlugIn {
 				new SigmaListener(sigmaText1, sigmaMin, sigmaMax, scrollbarSize, sigma1, sigma2, sigmaText2));
 		sigma2.addAdjustmentListener(new Sigma2Listener(sigmaMin, sigmaMax, scrollbarSize, sigma2, sigmaText2));
 		threshold.addAdjustmentListener(new ThresholdListener(thresholdText, thresholdMin, thresholdMax));
-		button.addActionListener(new TrackerButtonListener(frame));
+		track.addActionListener(new TrackerButtonListener(frame));
 		cancel.addActionListener(new CancelButtonListener(frame, true));
 		snakes.addActionListener(new snakeButtonListener());
 		moveNextListener.addActionListener(new moveNextListener());
@@ -1696,6 +1696,7 @@ public class InteractiveActiveContour implements PlugIn {
 		}
 	}
 
+	
 	public static void main(String[] args) {
 		new ImageJ();
 

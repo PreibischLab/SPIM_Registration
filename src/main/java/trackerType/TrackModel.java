@@ -193,7 +193,8 @@ public class TrackModel
 	 * @param trackNames
 	 *            the track names.
 	 */
-	public void from( final SimpleWeightedGraph< SnakeObject, DefaultWeightedEdge > graph, final Map<Integer, HashSet<SnakeObject>> trackSnakeObjects, final Map< Integer, Set< DefaultWeightedEdge > > trackEdges, final Map< Integer, Boolean > trackVisibility, final Map< Integer, String > trackNames )
+	public void from( final SimpleWeightedGraph< SnakeObject, DefaultWeightedEdge > graph, 
+			final Map<Integer, HashSet<SnakeObject>> trackSnakeObjects, final Map< Integer, Set< DefaultWeightedEdge > > trackEdges, final Map< Integer, Boolean > trackVisibility, final Map< Integer, String > trackNames )
 	{
 
 		if ( null != this.graph )
