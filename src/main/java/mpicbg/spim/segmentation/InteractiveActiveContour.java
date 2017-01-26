@@ -132,9 +132,7 @@ public class InteractiveActiveContour implements PlugIn {
 	int channel = 0;
 	RandomAccessibleInterval<FloatType> img;
 	RandomAccessibleInterval<FloatType> originalimg;
-	ImageStack pile = null;
-	ImageStack pile_resultat = null;
-	ImageStack pile_seg = null;
+	
 
 	// Dimensions of the stck :
 
@@ -351,13 +349,13 @@ public class InteractiveActiveContour implements PlugIn {
 	private boolean Dialogue() {
 		GenericDialog gd = new GenericDialog("Choose Frame");
 
-		if (slicesize > 1) {
+		if (totalframes > 1) {
 			gd.addNumericField("Move to frame", currentframe, 0);
 
 		}
 
 		gd.showDialog();
-		if (slicesize > 1) {
+		if (totalframes > 1) {
 			currentframe = (int) gd.getNextNumber();
 
 		}
@@ -367,15 +365,15 @@ public class InteractiveActiveContour implements PlugIn {
 	private boolean Dialoguesec() {
 		GenericDialog gd = new GenericDialog("Choose Final Frame");
 
-		if (slicesize > 1) {
-			gd.addNumericField("Do till frame", slicesize, 0);
+		if (totalframes > 1) {
+			gd.addNumericField("Do till frame", totalframes, 0);
 
 			assert (int) gd.getNextNumber() > 1;
 		}
 
 		gd.showDialog();
-		if (slicesize > 1) {
-			slicesize = (int) gd.getNextNumber();
+		if (totalframes > 1) {
+			totalframes = (int) gd.getNextNumber();
 
 		}
 		return !gd.wasCanceled();
@@ -586,13 +584,13 @@ public class InteractiveActiveContour implements PlugIn {
 
 			imp.setPosition(channel, imp.getSlice(), imp.getFrame());
 			Intensityimp.setPosition(channel, imp.getSlice(), imp.getFrame());
-			if (imp.getFrame() + 1 <= slicesize) {
+			if (imp.getFrame() + 1 <= totalframes) {
 				imp.setPosition(channel, imp.getSlice(), imp.getFrame() + 1);
 				Intensityimp.setPosition(channel, imp.getSlice(), imp.getFrame());
 			} else {
 				IJ.log("Max frame number exceeded, moving to last frame instead");
-				imp.setPosition(channel, imp.getSlice(), slicesize);
-				Intensityimp.setPosition(channel, imp.getSlice(), slicesize);
+				imp.setPosition(channel, imp.getSlice(), totalframes);
+				Intensityimp.setPosition(channel, imp.getSlice(), totalframes);
 				currentframe = slicesize;
 			}
 			currentframe = imp.getFrame();
@@ -620,8 +618,8 @@ public class InteractiveActiveContour implements PlugIn {
 			// check whenever roi is modified to update accordingly
 			roiListener = new RoiListener();
 			imp.getCanvas().addMouseListener(roiListener);
-			ImagePlus newimp = new ImagePlus("Currentslice " + currentframe,
-					imp.getImageStack().getProcessor(currentframe).duplicate());
+			ImagePlus newimp = new ImagePlus("Currentslice " + currentslice,
+					imp.getImageStack().getProcessor(currentslice).duplicate());
 			final Rectangle rect = roi.getBounds();
 
 			for (final RefinedPeak<Point> peak : peaks) {
@@ -690,8 +688,8 @@ public class InteractiveActiveContour implements PlugIn {
 				roiListener = new RoiListener();
 				imp.getCanvas().addMouseListener(roiListener);
 
-				ImagePlus newimp = new ImagePlus("Currentslice " + currentframe,
-						imp.getImageStack().getProcessor(currentframe).duplicate());
+				ImagePlus newimp = new ImagePlus("Currentslice " + currentslice,
+						imp.getImageStack().getProcessor(currentslice).duplicate());
 
 				final Rectangle rect = roi.getBounds();
 
@@ -726,17 +724,23 @@ public class InteractiveActiveContour implements PlugIn {
 			imp.setPosition(channel, imp.getSlice(), imp.getFrame());
 			Intensityimp.setPosition(channel, imp.getSlice(), imp.getFrame());
 			int next = imp.getFrame();
-			for (int index = next; index <= slicesize; ++index) {
-				imp.setPosition(channel, imp.getSlice(), index);
+			
+			for (int z = currentslice; z < slicesize; ++z ){	
+				
+			for (int index = next; index <= totalframes; ++index) {
+			
+			
+				imp.setPosition(channel, z - 1, index);
+				Intensityimp.setPosition(channel, z - 1, index);
+				
 				currentframe = imp.getFrame();
-				Intensityimp.setPosition(channel, imp.getSlice(), index);
-				ImagePlus newimp = new ImagePlus("Currentframe " + currentframe,
-						imp.getImageStack().getProcessor(currentframe).duplicate());
-				ImagePlus Intensitynewimp = new ImagePlus("Currentframe " + currentframe,
-						Intensityimp.getImageStack().getProcessor(currentframe).duplicate());
+				
+				CurrentView = getCurrentView(z - 1, index - 1);
+				
+				
 				Roi roi = imp.getRoi();
 				final Rectangle rect = roi.getBounds();
-				InteractiveSnakeFast snake = new InteractiveSnakeFast(newimp, Intensitynewimp, currentframe);
+				InteractiveSnakeFast snake = new InteractiveSnakeFast(CurrentView, CurrentView, index - 1);
 
 				RoiManager manager = RoiManager.getInstance();
 				if (manager != null) {
@@ -745,7 +749,7 @@ public class InteractiveActiveContour implements PlugIn {
 
 				// copy the ImagePlus into an ArrayImage<FloatType> for faster
 				// access
-				CurrentView = getCurrentView(currentslice - 1, currentframe - 1);
+				
 
 				updatePreview(ValueChange.FRAME);
 
@@ -768,10 +772,10 @@ public class InteractiveActiveContour implements PlugIn {
 					else if (lookForMinima)
 						or.setStrokeColor(Color.green);
 
-					newimp.setRoi(or);
+					imp.setRoi(or);
 
 				}
-				ImageProcessor ip = newimp.getProcessor();
+				ImageProcessor ip = imp.getProcessor();
 
 				if (Auto) {
 					if (index > next)
@@ -779,8 +783,11 @@ public class InteractiveActiveContour implements PlugIn {
 				}
 				snake.run(ip);
 
-				ImageStack currentimg = snake.getResult();
-				new ImagePlus("Snake Roi's for slice:" + currentframe, currentimg).show();
+				Overlay result = snake.getResult();
+				ImagePlus resultimp = ImageJFunctions.show(CurrentView); 
+				resultimp.setOverlay( result ); 
+				resultimp.show();
+			
 				ArrayList<SnakeObject> currentsnakes = snake.getRoiList();
 
 				if (AllFrameSnakes != null) {
@@ -797,7 +804,7 @@ public class InteractiveActiveContour implements PlugIn {
 					}
 
 				}
-
+			
 				AllFrameSnakes.add(currentsnakes);
 				IJ.log(" Size of List for tracker: " + AllFrameSnakes.size());
 				if (snake.saveIntensity) {
@@ -820,7 +827,7 @@ public class InteractiveActiveContour implements PlugIn {
 					}
 				}
 			}
-
+			}
 		}
 	}
 
@@ -829,12 +836,12 @@ public class InteractiveActiveContour implements PlugIn {
 		public void actionPerformed(final ActionEvent arg0) {
 
 			ImagePlus newimp = new ImagePlus("Currentslice " + currentframe,
-					imp.getImageStack().getProcessor(currentframe).duplicate());
+					imp.getImageStack().getProcessor(currentslice).duplicate());
 			ImagePlus Intensitynewimp = new ImagePlus("Currentslice " + currentframe,
-					Intensityimp.getImageStack().getProcessor(currentframe).duplicate());
+					Intensityimp.getImageStack().getProcessor(currentslice).duplicate());
 			Roi roi = imp.getRoi();
 			final Rectangle rect = roi.getBounds();
-			InteractiveSnake snake = new InteractiveSnake(newimp, Intensitynewimp, currentframe);
+			InteractiveSnakeFast snake = new InteractiveSnakeFast(CurrentView, CurrentView, currentframe);
 
 			for (final RefinedPeak<Point> peak : peaks) {
 
@@ -856,8 +863,10 @@ public class InteractiveActiveContour implements PlugIn {
 			ImageProcessor ip = newimp.getProcessor();
 
 			snake.run(ip);
-			ImageStack currentimg = snake.getResult();
-			new ImagePlus("Snake Roi's for slice:" + currentframe, currentimg).show();
+			Overlay result = snake.getResult();
+			ImagePlus resultimp = ImageJFunctions.show(CurrentView); 
+			resultimp.setOverlay( result ); 
+			resultimp.show();
 			ArrayList<SnakeObject> currentsnakes = snake.getRoiList();
 			if (AllFrameSnakes != null) {
 
@@ -949,97 +958,7 @@ public class InteractiveActiveContour implements PlugIn {
 		return totalimg;
 	}
 
-	/**
-	 * Normalize and make a copy of the {@link ImagePlus} into an {@link Image}
-	 * &gt;FloatType&lt; for faster access when copying the slices
-	 * 
-	 * @param imp
-	 *            - the {@link ImagePlus} input image
-	 * @return - the normalized copy [0...1]
-	 */
-	public static FloatImagePlus<net.imglib2.type.numeric.real.FloatType> convertToFloat(final ImagePlus imp,
-			int channel, int timepoint) {
-		return convertToFloat(imp, channel, timepoint, Double.NaN, Double.NaN);
-	}
-
-	public static FloatImagePlus<net.imglib2.type.numeric.real.FloatType> convertToFloat(final ImagePlus imp,
-			int channel, int timepoint, final double min, final double max) {
-		// stupid 1-offset of imagej
-		channel++;
-		timepoint++;
-
-		final int h = imp.getHeight();
-		final int w = imp.getWidth();
-
-		final ArrayList<float[]> img = new ArrayList<float[]>();
-
-		if (imp.getProcessor() instanceof FloatProcessor) {
-			for (int z = 0; z < imp.getNSlices(); ++z)
-				img.add(((float[]) imp.getStack().getProcessor(imp.getStackIndex(channel, z + 1, timepoint))
-						.getPixels()).clone());
-		} else if (imp.getProcessor() instanceof ByteProcessor) {
-			for (int z = 0; z < imp.getNSlices(); ++z) {
-				final byte[] pixels = (byte[]) imp.getStack().getProcessor(imp.getStackIndex(channel, z + 1, timepoint))
-						.getPixels();
-				final float[] pixelsF = new float[pixels.length];
-
-				for (int i = 0; i < pixels.length; ++i)
-					pixelsF[i] = pixels[i] & 0xff;
-
-				img.add(pixelsF);
-			}
-		} else if (imp.getProcessor() instanceof ShortProcessor) {
-			for (int z = 0; z < imp.getNSlices(); ++z) {
-				final short[] pixels = (short[]) imp.getStack()
-						.getProcessor(imp.getStackIndex(channel, z + 1, timepoint)).getPixels();
-				final float[] pixelsF = new float[pixels.length];
-
-				for (int i = 0; i < pixels.length; ++i)
-					pixelsF[i] = pixels[i] & 0xffff;
-
-				img.add(pixelsF);
-			}
-		} else // some color stuff or so
-		{
-			for (int z = 0; z < imp.getNSlices(); ++z) {
-				final ImageProcessor ip = imp.getStack().getProcessor(imp.getStackIndex(channel, z + 1, timepoint));
-				final float[] pixelsF = new float[w * h];
-
-				int i = 0;
-
-				for (int y = 0; y < h; ++y)
-					for (int x = 0; x < w; ++x)
-						pixelsF[i++] = ip.getPixelValue(x, y);
-
-				img.add(pixelsF);
-			}
-		}
-
-		final FloatImagePlus<net.imglib2.type.numeric.real.FloatType> i = createImgLib2(img, w, h);
-
-		if (Double.isNaN(min) || Double.isNaN(max) || Double.isInfinite(min) || Double.isInfinite(max) || min == max)
-			FusionHelper.normalizeImage(i);
-		else
-			FusionHelper.normalizeImage(i, (float) min, (float) max);
-
-		return i;
-	}
-
-	public static FloatImagePlus<net.imglib2.type.numeric.real.FloatType> createImgLib2(final List<float[]> img,
-			final int w, final int h) {
-		final ImagePlus imp;
-
-		if (img.size() > 1) {
-			final ImageStack stack = new ImageStack(w, h);
-			for (int z = 0; z < img.size(); ++z)
-				stack.addSlice(new FloatProcessor(w, h, img.get(z)));
-			imp = new ImagePlus("ImgLib2 FloatImagePlus (3d)", stack);
-		} else {
-			imp = new ImagePlus("ImgLib2 FloatImagePlus (2d)", new FloatProcessor(w, h, img.get(0)));
-		}
-
-		return ImagePlusAdapter.wrapFloat(imp);
-	}
+	
 
 	public static Float AutomaticThresholding(RandomAccessibleInterval<FloatType> inputimg) {
 
@@ -1193,7 +1112,7 @@ public class InteractiveActiveContour implements PlugIn {
 		final Button snakes = new Button("Apply snakes to current Frame selection");
 		final Button moveNextListener = new Button("Move to next frame");
 		final Button JumpFrame = new Button("Jump to frame number:");
-		final Button ApplytoStack = new Button("Automated Snake run for all frames");
+		final Button AutomatedSake = new Button("Automated Snake run for all frames");
 		final Checkbox Auto = new Checkbox("Constant parameters over Frames");
 		final Checkbox sigma2Enable = new Checkbox("Enable Manual Adjustment of Sigma 2 ", enableSigma2);
 		final Checkbox min = new Checkbox("Look for Minima (green)", lookForMinima);
@@ -1259,7 +1178,7 @@ public class InteractiveActiveContour implements PlugIn {
 
 		++c.gridy;
 		c.insets = new Insets(0, 145, 0, 145);
-		frame.add(ApplytoStack, c);
+		frame.add(AutomatedSake, c);
 
 		++c.gridy;
 		c.insets = new Insets(10, 175, 0, 175);
@@ -1279,7 +1198,7 @@ public class InteractiveActiveContour implements PlugIn {
 		snakes.addActionListener(new snakeButtonListener());
 		moveNextListener.addActionListener(new moveNextListener());
 		JumpFrame.addActionListener(new moveToFrameListener());
-		ApplytoStack.addActionListener(new moveAllListener());
+		AutomatedSake.addActionListener(new moveAllListener());
 		min.addItemListener(new MinListener());
 		max.addItemListener(new MaxListener());
 		Auto.addItemListener(new AutoListener());

@@ -8,7 +8,12 @@ import ij.gui.*;
 import ij.process.*;
 import net.imglib2.RandomAccess;
 import net.imglib2.RandomAccessibleInterval;
+import net.imglib2.RealRandomAccess;
+import net.imglib2.RealRandomAccessible;
+import net.imglib2.img.display.imagej.ImageJFunctions;
+import net.imglib2.interpolation.randomaccess.NearestNeighborInterpolatorFactory;
 import net.imglib2.type.numeric.real.FloatType;
+import net.imglib2.view.Views;
 
 import java.awt.*;
 import java.io.*;
@@ -36,7 +41,7 @@ public class ABSnakeFast {
     boolean closed;
     SnakeConfig config;
     ImageProcessor gradImage;
-    ImageProcessor originalImage;
+   RandomAccessibleInterval<FloatType> originalImage;
 
     double previousAlpha = 0;
 
@@ -137,7 +142,7 @@ public class ABSnakeFast {
         return this.closed;
     }
 
-    public void setOriginalImage(ImageProcessor originalImage) {
+    public void setOriginalImage(RandomAccessibleInterval<FloatType> originalImage) {
         this.originalImage = originalImage;
     }
 
@@ -171,6 +176,47 @@ public class ABSnakeFast {
             A.drawLine(x, y, xx, yy);
         }
     }
+    
+    
+    public void DrawSnake(Overlay overlay, RandomAccessibleInterval<FloatType> image, Color col, int linewidth) {
+        int i;
+        int x;
+        int y;
+        int xx;
+        int yy;
+        
+      
+        
+       
+        for (i = 0; i < NPT - 1; i++) {
+            x = (int) (points[i].x);
+            y = (int) (points[i].y);
+            xx = (int) (points[i + 1].x);
+            yy = (int) (points[i + 1].y);
+            
+            Line lineROI = new Line(x, y, xx, yy);
+            lineROI.setStrokeColor(col);
+			lineROI.setStrokeWidth(linewidth);
+            overlay.add(lineROI);
+            
+        }
+        if (this.closed()) {
+            x = (int) (points[NPT - 1].x);
+            y = (int) (points[NPT - 1].y);
+            xx = (int) (points[0].x);
+            yy = (int) (points[0].y);
+            
+            Line lineROI = new Line(x, y, xx, yy);
+            lineROI.setStrokeColor(col);
+			lineROI.setStrokeWidth(linewidth);
+            overlay.add(lineROI);
+            
+           
+        }
+        
+       
+    }
+    
 
     /**
      * write output in the FreeD format
@@ -559,13 +605,12 @@ public class ABSnakeFast {
      *
      * @param image Description of the Parameter
      */
-    public void computeGrad(ImageProcessor image) {
+    public void computeGrad(RandomAccessibleInterval<FloatType> image) {
         if (previousAlpha != config.getAlpha()) {
-            gradImage = grad2d_deriche(image, config.getAlpha());
+            gradImage = grad2d_derivative(image, config.getAlpha());
             previousAlpha = config.getAlpha();
         }
     }
-
     /**
      * serach for the closest edge along the normale direction
      *
@@ -611,13 +656,23 @@ public class ABSnakeFast {
             if (iy < 0) {
                 iy = 0;
             }
-            if (ix >= originalImage.getWidth()) {
-                ix = originalImage.getWidth() - 1;
+            if (ix >= originalImage.dimension(0)) {
+                ix = originalImage.dimension(0) - 1;
             }
-            if (iy >= originalImage.getHeight()) {
-                iy = originalImage.getHeight() - 1;
+            if (iy >= originalImage.dimension(1)) {
+                iy = originalImage.dimension(1)- 1;
             }
-            image_line[index] = originalImage.getInterpolatedPixel(ix, iy);
+            
+            // create an InterpolatorFactory RealRandomAccessible using nearst neighbor interpolation
+            NearestNeighborInterpolatorFactory< FloatType > factory1 =
+                new NearestNeighborInterpolatorFactory< FloatType >();
+            RealRandomAccessible< FloatType > realoriginalImage = Views.interpolate(
+                    Views.extendMirrorSingle( originalImage ), factory1 );
+            
+            RealRandomAccess<FloatType> ranac = realoriginalImage.realRandomAccess();
+            
+            ranac.setPosition(new double []{ix,iy});
+            image_line[index] = ranac.get().getRealDouble();
             index++;
         }
 
@@ -1444,7 +1499,7 @@ public class ABSnakeFast {
         RandomAccess<FloatType> ranac = iDep.randomAccess();
         for (i = 0; i < height; i++) {
             for (j = 0; j < width; j++) {
-            	ranac.setPosition(j, i);
+            	ranac.setPosition(new int []{j,i});
                 a1[i * width + j] = ranac.get().get();
             }
         }
@@ -1524,7 +1579,7 @@ public class ABSnakeFast {
          */
         for (i = 0; i < height; ++i) {
             for (j = 0; j < width; ++j) {
-            	ranac.setPosition(j, i);
+            	ranac.setPosition(new int []{j,i});
                 a1[i * width + j] = (int) (ranac.get().get());
             }
         }

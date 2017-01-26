@@ -151,9 +151,9 @@ import java.util.Locale;
           pile = imp.getStack();
           Intensitypile = Intensityimp.getStack();
           // sizes of the stack
-          slicesize = pile.getSize();
-          length = pile.getWidth();
-          height= pile.getHeight();
+          slicesize = imp.getNSlices();
+          height= imp.getHeight();
+      	length = imp.getWidth();
           slice1 = 1;
           slice2 = slicesize;
           Calibration cal = imp.getCalibration();
