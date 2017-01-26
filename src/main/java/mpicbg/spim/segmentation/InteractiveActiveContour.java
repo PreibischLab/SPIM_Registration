@@ -14,11 +14,9 @@ import ij.gui.Overlay;
 import ij.gui.Roi;
 import ij.io.Opener;
 import ij.io.RoiEncoder;
-import ij.measure.Calibration;
 import ij.plugin.PlugIn;
 import ij.plugin.frame.RoiManager;
 import ij.process.ByteProcessor;
-import ij.process.ColorProcessor;
 import ij.process.FloatProcessor;
 import ij.process.ImageProcessor;
 import ij.process.ShortProcessor;
@@ -46,73 +44,42 @@ import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.BufferedWriter;
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.nio.file.Path;
 import java.text.NumberFormat;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
-import java.util.Map.Entry;
-import java.util.Set;
-
 import org.jgrapht.graph.DefaultWeightedEdge;
 import org.jgrapht.graph.SimpleWeightedGraph;
-import com.mxgraph.canvas.mxICanvas;
-import com.mxgraph.canvas.mxSvgCanvas;
-import com.mxgraph.io.mxCodec;
-import com.mxgraph.io.mxGdCodec;
-import com.mxgraph.swing.mxGraphComponent;
-import com.mxgraph.util.mxCellRenderer;
-import com.mxgraph.util.mxCellRenderer.CanvasFactory;
-import com.mxgraph.util.mxDomUtils;
-import com.mxgraph.util.mxUtils;
-import com.mxgraph.util.mxXmlUtils;
-import com.mxgraph.util.png.mxPngEncodeParam;
-import com.mxgraph.util.png.mxPngImageEncoder;
-import com.mxgraph.view.mxGraph;
-import blobObjects.FramedBlob;
-import blobObjects.Subgraphs;
 import costMatrix.CostFunction;
 import costMatrix.IntensityDiffCostFunction;
 import costMatrix.SquareDistCostFunction;
-import mpicbg.imglib.algorithm.MultiThreaded;
-import mpicbg.imglib.algorithm.MultiThreadedAlgorithm;
-import mpicbg.imglib.algorithm.MultiThreadedBenchmarkAlgorithm;
-import mpicbg.imglib.algorithm.gauss.GaussianConvolutionReal;
-import mpicbg.imglib.algorithm.math.LocalizablePoint;
-import mpicbg.imglib.algorithm.scalespace.DifferenceOfGaussianPeak;
-import mpicbg.imglib.algorithm.scalespace.DifferenceOfGaussianReal1;
-import mpicbg.imglib.algorithm.scalespace.SubpixelLocalization;
-import mpicbg.imglib.container.array.ArrayContainerFactory;
-import mpicbg.imglib.cursor.LocalizableByDimCursor;
-import mpicbg.imglib.cursor.LocalizableCursor;
 import mpicbg.imglib.image.Image;
-import mpicbg.imglib.image.ImageFactory;
-import mpicbg.imglib.image.display.imagej.ImageJFunctions;
 import mpicbg.imglib.multithreading.SimpleMultiThreading;
-import mpicbg.imglib.outofbounds.OutOfBoundsStrategyMirrorFactory;
-import mpicbg.imglib.outofbounds.OutOfBoundsStrategyValueFactory;
-import mpicbg.imglib.type.numeric.real.FloatType;
 import mpicbg.imglib.util.Util;
-import mpicbg.spim.io.IOFunctions;
-import mpicbg.spim.registration.ViewStructure;
 import mpicbg.spim.registration.detection.DetectionSegmentation;
+import net.imglib2.Cursor;
+import net.imglib2.FinalInterval;
+import net.imglib2.IterableInterval;
+import net.imglib2.Point;
+import net.imglib2.PointSampleList;
 import net.imglib2.RandomAccess;
-import net.imglib2.exception.ImgLibException;
+import net.imglib2.RandomAccessibleInterval;
+import net.imglib2.algorithm.dog.DogDetection;
+import net.imglib2.algorithm.localextrema.RefinedPeak;
 import net.imglib2.img.ImagePlusAdapter;
-import net.imglib2.img.Img;
+import net.imglib2.img.ImgFactory;
+import net.imglib2.img.display.imagej.ImageJFunctions;
 import net.imglib2.img.imageplus.FloatImagePlus;
+import net.imglib2.type.numeric.real.FloatType;
+import net.imglib2.util.RealSum;
 import net.imglib2.view.Views;
 import overlaytrack.DisplayGraph;
-import overlaytrack.DisplaysubGraph;
 import spim.process.fusion.FusionHelper;
 import trackerType.BlobTracker;
 import trackerType.KFsearch;
@@ -127,12 +94,11 @@ import trackerType.TrackModel;
 
 public class InteractiveActiveContour implements PlugIn {
 
-	final int extraSize = 40;
 	final int scrollbarSize = 1000;
 
 	float sigma = 0.5f;
 	float sigma2 = 0.5f;
-	float threshold = 0.0001f;
+	float threshold = 1f;
 
 	// steps per octave
 	public static int standardSensitivity = 4;
@@ -140,15 +106,15 @@ public class InteractiveActiveContour implements PlugIn {
 
 	float imageSigma = 0.5f;
 	float sigmaMin = 0.5f;
-	float sigmaMax = 10f;
+	float sigmaMax = 30f;
 	int sigmaInit = 300;
 	// ROI original
 	int nbRois;
 	Roi rorig = null;
 	Roi processRoi = null;
-	float thresholdMin = 0.0001f;
+	float thresholdMin = 0f;
 	float thresholdMax = 1f;
-	int thresholdInit = 500;
+	int thresholdInit = 1;
 	int initialSearchradius = 10;
 	int maxSearchradius = 15;
 	int missedframes = 20;
@@ -158,23 +124,27 @@ public class InteractiveActiveContour implements PlugIn {
 	String addToName = "BlobinFramezStackwBio";
 	String addTrackToName = "TrackedBlobsID";
 	Color colorDraw = null;
-
+	FinalInterval interval;
 	SliceObserver sliceObserver;
 	RoiListener roiListener;
-	ImagePlus imp;
-	ImagePlus Intensityimp;
+	ImagePlus imp, Intensityimp;
+
 	int channel = 0;
-	Image<FloatType> img;
+	RandomAccessibleInterval<FloatType> img;
+	RandomAccessibleInterval<FloatType> originalimg;
 	ImageStack pile = null;
 	ImageStack pile_resultat = null;
 	ImageStack pile_seg = null;
-	
+
 	// Dimensions of the stck :
-	int stacksize = 0;
+
+	int totalframes = 0;
+	int slicesize = 0;
 	int length = 0;
 	int height = 0;
-	FloatImagePlus<net.imglib2.type.numeric.real.FloatType> source;
-	ArrayList<DifferenceOfGaussianPeak<FloatType>> peaks;
+	RandomAccessibleInterval<FloatType> CurrentView;
+	ArrayList<RefinedPeak<Point>> peaks;
+	int currentslice;
 	// first and last slice to process
 	int endFrame, currentframe;
 	Color originalColor = new Color(0.8f, 0.8f, 0.8f);
@@ -190,12 +160,14 @@ public class InteractiveActiveContour implements PlugIn {
 	boolean Auto = false;
 	boolean lookForMaxima = true;
 	ImagePlus impcopy;
+	double CalibrationX;
+	double CalibrationY;
 	BlobTracker blobtracker;
 	CostFunction<SnakeObject, SnakeObject> UserchosenCostFunction;
 	ArrayList<ArrayList<SnakeObject>> AllFrameSnakes;
 
 	public static enum ValueChange {
-		SIGMA, THRESHOLD,  ROI, MINMAX, ALL, FRAME
+		SIGMA, THRESHOLD, ROI, MINMAX, ALL, FRAME
 	}
 
 	boolean isFinished = false;
@@ -226,11 +198,29 @@ public class InteractiveActiveContour implements PlugIn {
 		return threshold;
 	}
 
+	public double getThresholdMin() {
+		return thresholdMin;
+	}
+
+	public double getThresholdMax() {
+		return thresholdMax;
+	}
+
+	public void setthresholdMax(final float thresholdMax) {
+
+		this.thresholdMax = thresholdMax;
+
+	}
+
+	public void setthresholdMin(final float thresholdMin) {
+
+		this.thresholdMin = thresholdMin;
+
+	}
+
 	public void setThreshold(final float value) {
 		threshold = value;
-		final double log1001 = Math.log10(scrollbarSize + 1);
-		thresholdInit = (int) Math.round(1001
-				- Math.pow(10, -(((threshold - thresholdMin) / (thresholdMax - thresholdMin)) * log1001) + log1001));
+		thresholdInit = computeScrollbarPositionFromValue(threshold, thresholdMin, thresholdMax, scrollbarSize);
 	}
 
 	public boolean getSigma2WasAdjusted() {
@@ -262,14 +252,15 @@ public class InteractiveActiveContour implements PlugIn {
 	}
 
 	// for the case that it is needed again, we can save one conversion
-	public FloatImagePlus<net.imglib2.type.numeric.real.FloatType> getConvertedImage() {
-		return source;
+	public RandomAccessibleInterval<FloatType> getConvertedImage() {
+		return CurrentView;
 	}
 
 	public InteractiveActiveContour(final ImagePlus imp, final ImagePlus Intensityimp, final int channel) {
 		this.imp = imp;
 		this.Intensityimp = Intensityimp;
 		this.channel = channel;
+		originalimg = ImageJFunctions.convertFloat(imp.duplicate());
 		standardRectangle = new Rectangle(20, 20, imp.getWidth() - 40, imp.getHeight() - 40);
 
 	}
@@ -278,7 +269,7 @@ public class InteractiveActiveContour implements PlugIn {
 		this.imp = imp;
 		this.Intensityimp = Intensityimp;
 		standardRectangle = new Rectangle(20, 20, imp.getWidth() - 40, imp.getHeight() - 40);
-
+		originalimg = ImageJFunctions.convertFloat(imp.duplicate());
 	}
 
 	public void setMinIntensityImage(final double min) {
@@ -292,11 +283,10 @@ public class InteractiveActiveContour implements PlugIn {
 	@Override
 	public void run(String arg) {
 
-		impcopy = imp.duplicate();
-		// sizes of the stack
-		stacksize = imp.getNFrames();
+		totalframes = imp.getNFrames();
+		slicesize = imp.getNSlices();
 		AllFrameSnakes = new ArrayList<ArrayList<SnakeObject>>();
-		endFrame = stacksize;
+		endFrame = totalframes;
 
 		if (imp == null)
 			imp = WindowManager.getCurrentImage();
@@ -327,7 +317,20 @@ public class InteractiveActiveContour implements PlugIn {
 		int z = currentframe;
 
 		// copy the ImagePlus into an ArrayImage<FloatType> for faster access
-		source = convertToFloat(imp, channel, z - 1, minIntensityImage, maxIntensityImage);
+		CurrentView = getCurrentView(currentslice - 1, currentframe - 1);
+
+		final Float houghval = AutomaticThresholding(CurrentView);
+
+		// Get local Minima in scale space to get Max rho-theta points
+		float minPeakValue = houghval;
+
+		setThreshold((float) (minPeakValue * 0.001));
+
+		setthresholdMax((float) (minPeakValue));
+
+		threshold = (float) (getThreshold());
+
+		thresholdMax = (float) getThresholdMax();
 
 		// show the interactive kit
 		displaySliders();
@@ -348,13 +351,13 @@ public class InteractiveActiveContour implements PlugIn {
 	private boolean Dialogue() {
 		GenericDialog gd = new GenericDialog("Choose Frame");
 
-		if (stacksize > 1) {
+		if (slicesize > 1) {
 			gd.addNumericField("Move to frame", currentframe, 0);
 
 		}
 
 		gd.showDialog();
-		if (stacksize > 1) {
+		if (slicesize > 1) {
 			currentframe = (int) gd.getNextNumber();
 
 		}
@@ -364,15 +367,15 @@ public class InteractiveActiveContour implements PlugIn {
 	private boolean Dialoguesec() {
 		GenericDialog gd = new GenericDialog("Choose Final Frame");
 
-		if (stacksize > 1) {
-			gd.addNumericField("Do till frame", stacksize, 0);
+		if (slicesize > 1) {
+			gd.addNumericField("Do till frame", slicesize, 0);
 
 			assert (int) gd.getNextNumber() > 1;
 		}
 
 		gd.showDialog();
-		if (stacksize > 1) {
-			stacksize = (int) gd.getNextNumber();
+		if (slicesize > 1) {
+			slicesize = (int) gd.getNextNumber();
 
 		}
 		return !gd.wasCanceled();
@@ -406,7 +409,7 @@ public class InteractiveActiveContour implements PlugIn {
 		// Choice of tracker
 		trackertype = gd.getNextChoiceIndex();
 		if (trackertype == 0) {
-		
+
 			functiontype = gd.getNextChoiceIndex();
 			switch (functiontype) {
 
@@ -423,14 +426,11 @@ public class InteractiveActiveContour implements PlugIn {
 
 			}
 			blobtracker = new KFsearch(AllFrameSnakes, UserchosenCostFunction, maxSearchradius, initialSearchradius,
-					stacksize, missedframes);
+					slicesize, missedframes);
 		}
-		
-		if (trackertype == 1)
-			blobtracker = new NNsearch(AllFrameSnakes, maxSearchradius, stacksize);
-			
 
-		
+		if (trackertype == 1)
+			blobtracker = new NNsearch(AllFrameSnakes, maxSearchradius, slicesize);
 
 		// color choice of display
 		indexcol = gd.getNextChoiceIndex();
@@ -489,7 +489,10 @@ public class InteractiveActiveContour implements PlugIn {
 				|| rect.getMaxX() != standardRectangle.getMaxX() || rect.getMinY() != standardRectangle.getMinY()
 				|| rect.getMaxY() != standardRectangle.getMaxY()) {
 			standardRectangle = rect;
-			img = extractImage(source, standardRectangle, extraSize);
+			long[] min = { (long) standardRectangle.getMinX(), (long) standardRectangle.getMinY() };
+			long[] max = { (long) standardRectangle.getMaxX(), (long) standardRectangle.getMaxY() };
+			interval = new FinalInterval(min, max);
+			img = extractImage(CurrentView);
 			roiChanged = true;
 		}
 
@@ -501,42 +504,23 @@ public class InteractiveActiveContour implements PlugIn {
 
 		// compute the Difference Of Gaussian if necessary
 		if (peaks == null || roiChanged || change == ValueChange.SIGMA || change == ValueChange.FRAME
+				|| change == ValueChange.THRESHOLD
 				|| change == ValueChange.ALL) {
 			//
 			// Compute the Sigmas for the gaussian folding
 			//
 
-			final float k, K_MIN1_INV;
-			final float[] sigma, sigmaDiff;
+			final DogDetection.ExtremaType type;
 
-			if (enableSigma2) {
-				sigma = new float[2];
-				sigma[0] = this.sigma;
-				sigma[1] = this.sigma2;
-				k = sigma[1] / sigma[0];
-				K_MIN1_INV = DetectionSegmentation.computeKWeight(k);
-				sigmaDiff = DetectionSegmentation.computeSigmaDiff(sigma, imageSigma);
-			} else {
-				k = (float) DetectionSegmentation.computeK(sensitivity);
-				K_MIN1_INV = DetectionSegmentation.computeKWeight(k);
-				sigma = DetectionSegmentation.computeSigma(k, this.sigma);
-				sigmaDiff = DetectionSegmentation.computeSigmaDiff(sigma, imageSigma);
-			}
+			if (lookForMaxima)
+				type = DogDetection.ExtremaType.MINIMA;
+			else
+				type = DogDetection.ExtremaType.MAXIMA;
 
-			// the upper boundary
-			this.sigma2 = sigma[1];
+			final DogDetection<FloatType> newdog = new DogDetection<FloatType>(Views.extendZero(img), interval,
+					new double[] { 1, 1 }, sigma, sigma2, type, threshold, true);
 
-			final DifferenceOfGaussianReal1<FloatType> dog = new DifferenceOfGaussianReal1<FloatType>(img,
-					new OutOfBoundsStrategyValueFactory<FloatType>(), sigmaDiff[0], sigmaDiff[1], thresholdMin / 4,
-					K_MIN1_INV);
-			dog.setKeepDoGImage(true);
-			dog.process();
-
-			final SubpixelLocalization<FloatType> subpixel = new SubpixelLocalization<FloatType>(dog.getDoGImage(),
-					dog.getPeaks());
-			subpixel.process();
-
-			peaks = dog.getPeaks();
+			peaks = newdog.getSubpixelPeaks();
 
 		}
 
@@ -556,7 +540,6 @@ public class InteractiveActiveContour implements PlugIn {
 			roimanager = new RoiManager();
 		}
 
-
 		MouseEvent mev = new MouseEvent(imp.getCanvas(), MouseEvent.MOUSE_RELEASED, System.currentTimeMillis(), 0, 0, 0,
 				1, false);
 		/*
@@ -573,27 +556,20 @@ public class InteractiveActiveContour implements PlugIn {
 			// }
 		}
 
-		for (final DifferenceOfGaussianPeak<FloatType> peak : peaks) {
-			if ((peak.isMax() && lookForMaxima) || (peak.isMin() && lookForMinima)) {
-				final float x = peak.getPosition(0);
-				final float y = peak.getPosition(1);
-				if (Math.abs(peak.getValue().get()) > threshold && x >= extraSize / 2 && y >= extraSize / 2
-						&& x < rect.width + extraSize / 2 && y < rect.height + extraSize / 2) {
-					final OvalRoi or = new OvalRoi(Util.round(x - sigma) + rect.x - extraSize / 2,
-							Util.round(y - sigma) + rect.y - extraSize / 2, Util.round(sigma + sigma2),
-							Util.round(sigma + sigma2));
+		for (final RefinedPeak<Point> peak : peaks) {
+			float x = (float) (peak.getFloatPosition(0));
+			float y = (float) (peak.getFloatPosition(1));
 
-					if (peak.isMax())
-						or.setStrokeColor(Color.red);
-					else if (peak.isMin())
-						or.setStrokeColor(Color.green);
+			final OvalRoi or = new OvalRoi(Util.round(x - sigma), Util.round(y - sigma), Util.round(sigma + sigma2),
+					Util.round(sigma + sigma2));
 
-					o.add(or);
-					roimanager.addRoi(or);
+			if (lookForMaxima)
+				or.setStrokeColor(Color.red);
+			else
+				or.setStrokeColor(Color.green);
 
-				}
-
-			}
+			o.add(or);
+			roimanager.addRoi(or);
 		}
 
 		imp.updateAndDraw();
@@ -610,14 +586,14 @@ public class InteractiveActiveContour implements PlugIn {
 
 			imp.setPosition(channel, imp.getSlice(), imp.getFrame());
 			Intensityimp.setPosition(channel, imp.getSlice(), imp.getFrame());
-			if (imp.getFrame() + 1 <= stacksize) {
+			if (imp.getFrame() + 1 <= slicesize) {
 				imp.setPosition(channel, imp.getSlice(), imp.getFrame() + 1);
 				Intensityimp.setPosition(channel, imp.getSlice(), imp.getFrame());
 			} else {
 				IJ.log("Max frame number exceeded, moving to last frame instead");
-				imp.setPosition(channel, imp.getSlice(),stacksize);
-				Intensityimp.setPosition(channel, imp.getSlice(),stacksize);
-				currentframe = stacksize;
+				imp.setPosition(channel, imp.getSlice(), slicesize);
+				Intensityimp.setPosition(channel, imp.getSlice(), slicesize);
+				currentframe = slicesize;
 			}
 			currentframe = imp.getFrame();
 
@@ -636,7 +612,7 @@ public class InteractiveActiveContour implements PlugIn {
 
 			// copy the ImagePlus into an ArrayImage<FloatType> for faster
 			// access
-			source = convertToFloat(imp, channel, currentframe - 1, minIntensityImage, maxIntensityImage);
+			CurrentView = getCurrentView(currentslice - 1, currentframe - 1);
 
 			updatePreview(ValueChange.FRAME);
 			isStarted = true;
@@ -648,27 +624,21 @@ public class InteractiveActiveContour implements PlugIn {
 					imp.getImageStack().getProcessor(currentframe).duplicate());
 			final Rectangle rect = roi.getBounds();
 
-			for (final DifferenceOfGaussianPeak<FloatType> peak : peaks) {
-				if ((peak.isMax() && lookForMaxima) || (peak.isMin() && lookForMinima)) {
-					final float x = peak.getPosition(0);
-					final float y = peak.getPosition(1);
+			for (final RefinedPeak<Point> peak : peaks) {
 
-					if (Math.abs(peak.getValue().get()) > threshold && x >= extraSize / 2 && y >= extraSize / 2
-							&& x < rect.width + extraSize / 2 && y < rect.height + extraSize / 2) {
-						final OvalRoi or = new OvalRoi(Util.round(x - sigma) + rect.x - extraSize / 2,
-								Util.round(y - sigma) + rect.y - extraSize / 2, Util.round(sigma + sigma2),
-								Util.round(sigma + sigma2));
+				final float x = (float) peak.getDoublePosition(0);
+				final float y = (float) peak.getDoublePosition(1);
 
-						if (peak.isMax())
-							or.setStrokeColor(Color.red);
-						else if (peak.isMin())
-							or.setStrokeColor(Color.green);
+				final OvalRoi or = new OvalRoi(Util.round(x - sigma), Util.round(y - sigma), Util.round(sigma + sigma2),
+						Util.round(sigma + sigma2));
 
-						newimp.setRoi(or);
+				if (lookForMaxima)
+					or.setStrokeColor(Color.red);
+				else if (lookForMinima)
+					or.setStrokeColor(Color.green);
 
-					}
+				newimp.setRoi(or);
 
-				}
 			}
 
 		}
@@ -684,15 +654,14 @@ public class InteractiveActiveContour implements PlugIn {
 				sliceObserver = new SliceObserver(imp, new ImagePlusListener());
 				imp.setPosition(channel, imp.getSlice(), imp.getFrame());
 
-
-				if (currentframe <= stacksize) {
+				if (currentframe <= slicesize) {
 					imp.setPosition(channel, imp.getSlice(), currentframe);
 					Intensityimp.setPosition(channel, imp.getSlice(), currentframe);
 				} else {
 					IJ.log("Max frame number exceeded, moving to last frame instead");
-					imp.setPosition(channel, imp.getSlice(),stacksize);
-					Intensityimp.setPosition(channel, imp.getSlice(),stacksize);
-					currentframe = stacksize;
+					imp.setPosition(channel, imp.getSlice(), slicesize);
+					Intensityimp.setPosition(channel, imp.getSlice(), slicesize);
+					currentframe = slicesize;
 				}
 
 				if (imp.getType() == ImagePlus.COLOR_RGB || imp.getType() == ImagePlus.COLOR_256) {
@@ -711,7 +680,7 @@ public class InteractiveActiveContour implements PlugIn {
 
 				// copy the ImagePlus into an ArrayImage<FloatType> for faster
 				// access
-				source = convertToFloat(imp, channel, currentframe - 1, minIntensityImage, maxIntensityImage);
+				CurrentView = getCurrentView(currentslice - 1, currentframe - 1);
 
 				// compute first version
 				updatePreview(ValueChange.FRAME);
@@ -726,27 +695,21 @@ public class InteractiveActiveContour implements PlugIn {
 
 				final Rectangle rect = roi.getBounds();
 
-				for (final DifferenceOfGaussianPeak<FloatType> peak : peaks) {
-					if ((peak.isMax() && lookForMaxima) || (peak.isMin() && lookForMinima)) {
-						final float x = peak.getPosition(0);
-						final float y = peak.getPosition(1);
+				for (final RefinedPeak<Point> peak : peaks) {
 
-						if (Math.abs(peak.getValue().get()) > threshold && x >= extraSize / 2 && y >= extraSize / 2
-								&& x < rect.width + extraSize / 2 && y < rect.height + extraSize / 2) {
-							final OvalRoi or = new OvalRoi(Util.round(x - sigma) + rect.x - extraSize / 2,
-									Util.round(y - sigma) + rect.y - extraSize / 2, Util.round(sigma + sigma2),
-									Util.round(sigma + sigma2));
+					final float x = peak.getFloatPosition(0);
+					final float y = peak.getFloatPosition(1);
 
-							if (peak.isMax())
-								or.setStrokeColor(Color.red);
-							else if (peak.isMin())
-								or.setStrokeColor(Color.green);
+					final OvalRoi or = new OvalRoi(Util.round(x - sigma), Util.round(y - sigma),
+							Util.round(sigma + sigma2), Util.round(sigma + sigma2));
 
-							newimp.setRoi(or);
+					if (lookForMaxima)
+						or.setStrokeColor(Color.red);
+					else if (lookForMinima)
+						or.setStrokeColor(Color.green);
 
-						}
+					newimp.setRoi(or);
 
-					}
 				}
 			}
 		}
@@ -760,10 +723,10 @@ public class InteractiveActiveContour implements PlugIn {
 			sliceObserver = new SliceObserver(imp, new ImagePlusListener());
 
 			boolean dialog = Dialoguesec();
-            imp.setPosition(channel, imp.getSlice(), imp.getFrame());
-            Intensityimp.setPosition(channel, imp.getSlice(), imp.getFrame());
+			imp.setPosition(channel, imp.getSlice(), imp.getFrame());
+			Intensityimp.setPosition(channel, imp.getSlice(), imp.getFrame());
 			int next = imp.getFrame();
-			for (int index = next; index <= stacksize; ++index) {
+			for (int index = next; index <= slicesize; ++index) {
 				imp.setPosition(channel, imp.getSlice(), index);
 				currentframe = imp.getFrame();
 				Intensityimp.setPosition(channel, imp.getSlice(), index);
@@ -782,7 +745,7 @@ public class InteractiveActiveContour implements PlugIn {
 
 				// copy the ImagePlus into an ArrayImage<FloatType> for faster
 				// access
-				source = convertToFloat(imp, channel, currentframe - 1, minIntensityImage, maxIntensityImage);
+				CurrentView = getCurrentView(currentslice - 1, currentframe - 1);
 
 				updatePreview(ValueChange.FRAME);
 
@@ -792,27 +755,21 @@ public class InteractiveActiveContour implements PlugIn {
 				roiListener = new RoiListener();
 				imp.getCanvas().addMouseListener(roiListener);
 
-				for (final DifferenceOfGaussianPeak<FloatType> peak : peaks) {
-					if ((peak.isMax() && lookForMaxima) || (peak.isMin() && lookForMinima)) {
-						final float x = peak.getPosition(0);
-						final float y = peak.getPosition(1);
+				for (final RefinedPeak<Point> peak : peaks) {
 
-						if (Math.abs(peak.getValue().get()) > threshold && x >= extraSize / 2 && y >= extraSize / 2
-								&& x < rect.width + extraSize / 2 && y < rect.height + extraSize / 2) {
-							final OvalRoi or = new OvalRoi(Util.round(x - sigma) + rect.x - extraSize / 2,
-									Util.round(y - sigma) + rect.y - extraSize / 2, Util.round(sigma + sigma2),
-									Util.round(sigma + sigma2));
+					final float x = (float) peak.getDoublePosition(0);
+					final float y = (float) peak.getDoublePosition(1);
 
-							if (peak.isMax())
-								or.setStrokeColor(Color.red);
-							else if (peak.isMin())
-								or.setStrokeColor(Color.green);
+					final OvalRoi or = new OvalRoi(Util.round(x - sigma), Util.round(y - sigma),
+							Util.round(sigma + sigma2), Util.round(sigma + sigma2));
 
-							newimp.setRoi(or);
+					if (lookForMaxima)
+						or.setStrokeColor(Color.red);
+					else if (lookForMinima)
+						or.setStrokeColor(Color.green);
 
-						}
+					newimp.setRoi(or);
 
-					}
 				}
 				ImageProcessor ip = newimp.getProcessor();
 
@@ -879,27 +836,21 @@ public class InteractiveActiveContour implements PlugIn {
 			final Rectangle rect = roi.getBounds();
 			InteractiveSnake snake = new InteractiveSnake(newimp, Intensitynewimp, currentframe);
 
-			for (final DifferenceOfGaussianPeak<FloatType> peak : peaks) {
-				if ((peak.isMax() && lookForMaxima) || (peak.isMin() && lookForMinima)) {
-					final float x = peak.getPosition(0);
-					final float y = peak.getPosition(1);
+			for (final RefinedPeak<Point> peak : peaks) {
 
-					if (Math.abs(peak.getValue().get()) > threshold && x >= extraSize / 2 && y >= extraSize / 2
-							&& x < rect.width + extraSize / 2 && y < rect.height + extraSize / 2) {
-						final OvalRoi or = new OvalRoi(Util.round(x - sigma) + rect.x - extraSize / 2,
-								Util.round(y - sigma) + rect.y - extraSize / 2, Util.round(sigma + sigma2),
-								Util.round(sigma + sigma2));
+				final float x = (float) peak.getDoublePosition(0);
+				final float y = (float) peak.getDoublePosition(1);
 
-						if (peak.isMax())
-							or.setStrokeColor(Color.red);
-						else if (peak.isMin())
-							or.setStrokeColor(Color.green);
+				final OvalRoi or = new OvalRoi(Util.round(x - sigma), Util.round(y - sigma), Util.round(sigma + sigma2),
+						Util.round(sigma + sigma2));
 
-						newimp.setRoi(or);
+				if (lookForMaxima)
+					or.setStrokeColor(Color.red);
+				else if (lookForMinima)
+					or.setStrokeColor(Color.green);
 
-					}
+				newimp.setRoi(or);
 
-				}
 			}
 
 			ImageProcessor ip = newimp.getProcessor();
@@ -979,53 +930,23 @@ public class InteractiveActiveContour implements PlugIn {
 	/**
 	 * Extract the current 2d region of interest from the souce image
 	 * 
-	 * @param source
-	 *            - the source image, a {@link Image} which is a copy of the
-	 *            {@link ImagePlus}
-	 * @param rectangle
-	 *            - the area of interest
-	 * @param extraSize
-	 *            - the extra size around so that detections at the border of
-	 *            the roi are not messed up
+	 * @param CurrentView
+	 *            - the CurrentView image, a {@link Image} which is a copy of
+	 *            the {@link ImagePlus}
+	 * 
 	 * @return
 	 */
-	protected Image<FloatType> extractImage(final FloatImagePlus<net.imglib2.type.numeric.real.FloatType> source,
-			final Rectangle rectangle, final int extraSize) {
-		final Image<FloatType> img = new ImageFactory<FloatType>(new FloatType(), new ArrayContainerFactory())
-				.createImage(new int[] { rectangle.width + extraSize, rectangle.height + extraSize });
 
-		final int offsetX = rectangle.x - extraSize / 2;
-		final int offsetY = rectangle.y - extraSize / 2;
+	protected RandomAccessibleInterval<FloatType> extractImage(final RandomAccessibleInterval<FloatType> intervalView) {
 
-		final int[] location = new int[source.numDimensions()];
+		final FloatType type = intervalView.randomAccess().get().createVariable();
+		final ImgFactory<FloatType> factory = net.imglib2.util.Util.getArrayOrCellImgFactory(intervalView, type);
+		RandomAccessibleInterval<FloatType> totalimg = factory.create(intervalView, type);
 
-		if (location.length > 2)
-			location[2] = (imp.getCurrentSlice() - 1) / imp.getNChannels();
+		final RandomAccessibleInterval<FloatType> img = Views.interval(intervalView, interval);
+		totalimg = Views.interval(Views.extendBorder(img), intervalView);
 
-		final LocalizableCursor<FloatType> cursor = img.createLocalizableCursor();
-		final RandomAccess<net.imglib2.type.numeric.real.FloatType> positionable;
-
-		if (offsetX >= 0 && offsetY >= 0 && offsetX + img.getDimension(0) < source.dimension(0)
-				&& offsetY + img.getDimension(1) < source.dimension(1)) {
-			// it is completely inside so we need no outofbounds for copying
-			positionable = source.randomAccess();
-		} else {
-			positionable = Views.extendMirrorSingle(source).randomAccess();
-		}
-
-		while (cursor.hasNext()) {
-			cursor.fwd();
-			cursor.getPosition(location);
-
-			location[0] += offsetX;
-			location[1] += offsetY;
-
-			positionable.setPosition(location);
-
-			cursor.getType().set(positionable.get().get());
-		}
-
-		return img;
+		return totalimg;
 	}
 
 	/**
@@ -1120,6 +1041,127 @@ public class InteractiveActiveContour implements PlugIn {
 		return ImagePlusAdapter.wrapFloat(imp);
 	}
 
+	public static Float AutomaticThresholding(RandomAccessibleInterval<FloatType> inputimg) {
+
+		FloatType max = new FloatType();
+		FloatType min = new FloatType();
+		Float ThresholdNew, Thresholdupdate;
+
+		max = computeMaxIntensity(inputimg);
+		min = computeMinIntensity(inputimg);
+
+		ThresholdNew = (max.get() - min.get()) / 2;
+
+		// Get the new threshold value after segmenting the inputimage with
+		// thresholdnew
+		Thresholdupdate = SegmentbyThresholding(Views.iterable(inputimg), ThresholdNew);
+
+		while (true) {
+
+			ThresholdNew = SegmentbyThresholding(Views.iterable(inputimg), Thresholdupdate);
+
+			// Check if the new threshold value is close to the previous value
+			if (Math.abs(Thresholdupdate - ThresholdNew) < 1.0E-2)
+				break;
+			Thresholdupdate = ThresholdNew;
+		}
+
+		return ThresholdNew;
+
+	}
+
+	public static FloatType computeMaxIntensity(final RandomAccessibleInterval<FloatType> inputimg) {
+		// create a cursor for the image (the order does not matter)
+		final Cursor<FloatType> cursor = Views.iterable(inputimg).cursor();
+
+		// initialize min and max with the first image value
+		FloatType type = cursor.next();
+		FloatType max = type.copy();
+
+		// loop over the rest of the data and determine min and max value
+		while (cursor.hasNext()) {
+			// we need this type more than once
+			type = cursor.next();
+
+			if (type.compareTo(max) > 0) {
+				max.set(type);
+
+			}
+		}
+
+		return max;
+	}
+
+	public static FloatType computeMinIntensity(final RandomAccessibleInterval<FloatType> inputimg) {
+		// create a cursor for the image (the order does not matter)
+		final Cursor<FloatType> cursor = Views.iterable(inputimg).cursor();
+
+		// initialize min and max with the first image value
+		FloatType type = cursor.next();
+		FloatType min = type.copy();
+
+		// loop over the rest of the data and determine min and max value
+		while (cursor.hasNext()) {
+			// we need this type more than once
+			type = cursor.next();
+
+			if (type.compareTo(min) < 0) {
+				min.set(type);
+
+			}
+		}
+
+		return min;
+	}
+
+	// Segment image by thresholding, used to determine automatic thresholding
+	// level
+	public static Float SegmentbyThresholding(IterableInterval<FloatType> inputimg, Float Threshold) {
+
+		int n = inputimg.numDimensions();
+		Float ThresholdNew;
+		PointSampleList<FloatType> listA = new PointSampleList<FloatType>(n);
+		PointSampleList<FloatType> listB = new PointSampleList<FloatType>(n);
+		Cursor<FloatType> cursor = inputimg.localizingCursor();
+		while (cursor.hasNext()) {
+			cursor.fwd();
+
+			if (cursor.get().get() < Threshold) {
+				Point newpointA = new Point(n);
+				newpointA.setPosition(cursor);
+				listA.add(newpointA, cursor.get().copy());
+			} else {
+				Point newpointB = new Point(n);
+				newpointB.setPosition(cursor);
+				listB.add(newpointB, cursor.get().copy());
+			}
+		}
+		final RealSum realSumA = new RealSum();
+		long countA = 0;
+
+		for (final FloatType type : listA) {
+			realSumA.add(type.getRealDouble());
+			++countA;
+		}
+
+		final double sumA = realSumA.getSum() / countA;
+
+		final RealSum realSumB = new RealSum();
+		long countB = 0;
+
+		for (final FloatType type : listB) {
+			realSumB.add(type.getRealDouble());
+			++countB;
+		}
+
+		final double sumB = realSumB.getSum() / countB;
+
+		ThresholdNew = (float) (sumA + sumB) / 2;
+
+		return ThresholdNew;
+
+	}
+
 	/**
 	 * Instantiates the panel for adjusting the paramters
 	 */
@@ -1136,11 +1178,7 @@ public class InteractiveActiveContour implements PlugIn {
 		this.sigma = computeValueFromScrollbarPosition(sigmaInit, sigmaMin, sigmaMax, scrollbarSize);
 
 		final Scrollbar threshold = new Scrollbar(Scrollbar.HORIZONTAL, thresholdInit, 10, 0, 10 + scrollbarSize);
-		final float log1001 = (float) Math.log10(scrollbarSize + 1);
-
-		this.threshold = thresholdMin
-				+ ((log1001 - (float) Math.log10(1001 - thresholdInit)) / log1001) * (thresholdMax - thresholdMin);
-
+		this.threshold = computeValueFromScrollbarPosition(thresholdInit, thresholdMin, thresholdMax, scrollbarSize);
 		this.sigma2 = computeSigma2(this.sigma, this.sensitivity);
 		final int sigma2init = computeScrollbarPositionFromValue(this.sigma2, sigmaMin, sigmaMax, scrollbarSize);
 		final Scrollbar sigma2 = new Scrollbar(Scrollbar.HORIZONTAL, sigma2init, 10, 0, 10 + scrollbarSize);
@@ -1334,6 +1372,72 @@ public class InteractiveActiveContour implements PlugIn {
 		}
 	}
 
+	public RandomAccessibleInterval<FloatType> getCurrentView(int Slice, int Frame) {
+
+		RandomAccess<FloatType> ran = originalimg.randomAccess();
+
+		final int ndims = originalimg.numDimensions();
+
+		final FloatType type = originalimg.randomAccess().get().createVariable();
+		long[] dim = { originalimg.dimension(0), originalimg.dimension(1) };
+		final ImgFactory<FloatType> factory = net.imglib2.util.Util.getArrayOrCellImgFactory(originalimg, type);
+		RandomAccessibleInterval<FloatType> totalimg = factory.create(dim, type);
+		Cursor<FloatType> cursor = Views.iterable(totalimg).localizingCursor();
+
+		if (ndims > 2 && ndims < 4) {
+
+			// we have x,y,t or x,y,z image
+
+			if (imp.getNSlices() > 1) {
+
+				// We have x, y, z image
+
+				ran.setPosition(Slice, ndims - 1);
+
+				while (cursor.hasNext()) {
+
+					cursor.fwd();
+
+					long x = cursor.getLongPosition(0);
+					long y = cursor.getLongPosition(1);
+
+					ran.setPosition(x, 0);
+					ran.setPosition(y, 1);
+
+					cursor.get().set(ran.get());
+
+				}
+
+			}
+
+			if (imp.getNFrames() > 1) {
+
+				// We have x, y , t image
+
+				ran.setPosition(Frame, ndims - 1);
+
+				while (cursor.hasNext()) {
+
+					cursor.fwd();
+
+					long x = cursor.getLongPosition(0);
+					long y = cursor.getLongPosition(1);
+
+					ran.setPosition(x, 0);
+					ran.setPosition(y, 1);
+
+					cursor.get().set(ran.get());
+
+				}
+
+			}
+
+		}
+
+		return totalimg;
+
+	}
+
 	/**
 	 * Tests whether the ROI was changed and will recompute the preview
 	 * 
@@ -1452,7 +1556,7 @@ public class InteractiveActiveContour implements PlugIn {
 
 					// Write tracks with same track id to file
 					try {
-						File fichiertrack = new File(usefolder + "//" + addTrackToName+ "test" + id + ".txt");
+						File fichiertrack = new File(usefolder + "//" + addTrackToName + "test" + id + ".txt");
 						FileWriter fwtr = new FileWriter(fichiertrack);
 						BufferedWriter bwtr = new BufferedWriter(fwtr);
 						NumberFormat nf = NumberFormat.getInstance(Locale.ENGLISH);
@@ -1659,7 +1763,6 @@ public class InteractiveActiveContour implements PlugIn {
 	protected class ThresholdListener implements AdjustmentListener {
 		final Label label;
 		final float min, max;
-		final float log1001 = (float) Math.log10(1001);
 
 		public ThresholdListener(final Label label, final float min, final float max) {
 			this.label = label;
@@ -1669,7 +1772,7 @@ public class InteractiveActiveContour implements PlugIn {
 
 		@Override
 		public void adjustmentValueChanged(final AdjustmentEvent event) {
-			threshold = min + ((log1001 - (float) Math.log10(1001 - event.getValue())) / log1001) * (max - min);
+			threshold = computeValueFromScrollbarPosition(event.getValue(), min, max, scrollbarSize);
 			label.setText("Threshold = " + threshold);
 
 			if (!isComputing) {
@@ -1696,7 +1799,6 @@ public class InteractiveActiveContour implements PlugIn {
 		}
 	}
 
-	
 	public static void main(String[] args) {
 		new ImageJ();
 
